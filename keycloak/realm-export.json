@@ -1,0 +1,224 @@
+{
+  "realm": "brainwave",
+  "enabled": true,
+  "displayName": "Brainwave",
+  "displayNameHtml": "<b>Brainwave</b>",
+
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": true,
+  "permanentLockout": false,
+  "maxFailureWaitSeconds": 900,
+  "minimumQuickLoginWaitSeconds": 60,
+  "waitIncrementSeconds": 60,
+  "quickLoginCheckMilliSeconds": 1000,
+  "maxDeltaTimeSeconds": 43200,
+  "failureFactor": 5,
+
+  "defaultSignatureAlgorithm": "RS256",
+
+  "accessTokenLifespan": 900,
+  "accessTokenLifespanForImplicitFlow": 900,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "offlineSessionIdleTimeout": 2592000,
+  "offlineSessionMaxLifespanEnabled": false,
+  "offlineSessionMaxLifespan": 5184000,
+  "refreshTokenMaxReuse": 0,
+  "revokeRefreshToken": true,
+
+  "roles": {
+    "realm": [
+      {
+        "name": "ADMIN",
+        "description": "Full platform access: manage users, all documents, system config",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "EDITOR",
+        "description": "Create, read, and update documents. Cannot delete or manage users",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "VIEWER",
+        "description": "Read-only access to documents they have been granted access to",
+        "composite": false,
+        "clientRole": false
+      }
+    ]
+  },
+
+  "defaultRoles": ["VIEWER"],
+
+  "clients": [
+    {
+      "clientId": "brainwave-public",
+      "name": "Brainwave Web Client",
+      "description": "Public PKCE client for browser-based frontend (SPA). No client secret.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "authorizationServicesEnabled": false,
+      "frontchannelLogout": true,
+      "redirectUris": [
+        "http://localhost:3000/*",
+        "http://localhost:5173/*",
+        "http://localhost:8000/*"
+      ],
+      "webOrigins": [
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://localhost:8000"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:3000/*##http://localhost:5173/*"
+      },
+      "defaultClientScopes": ["web-origins", "profile", "roles", "email"],
+      "optionalClientScopes": ["address", "phone", "offline_access"]
+    },
+    {
+      "clientId": "auth-hub-service",
+      "name": "AuthHub Service Account",
+      "description": "Confidential client for AuthHub to call Keycloak Admin API. Manages users, assigns roles.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "auth-hub-dev-secret-change-in-prod",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "authorizationServicesEnabled": false,
+      "attributes": {}
+    },
+    {
+      "clientId": "brainwave-dev",
+      "name": "Local Dev Client (Direct Grant)",
+      "description": "DEV ONLY — Enables Resource Owner Password Credentials for local testing with curl/Postman. REMOVE IN PRODUCTION.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "redirectUris": ["*"],
+      "webOrigins": ["*"],
+      "attributes": {}
+    }
+  ],
+
+  "clientScopes": [
+    {
+      "name": "documents.write",
+      "description": "Scope required for creating and updating documents",
+      "protocol": "openid-connect",
+      "attributes": { "include.in.token.scope": "true" }
+    },
+    {
+      "name": "documents.read",
+      "description": "Scope required for reading documents",
+      "protocol": "openid-connect",
+      "attributes": { "include.in.token.scope": "true" }
+    }
+  ],
+
+  "components": {
+    "org.keycloak.keys.KeyProvider": [
+      {
+        "id": "brainwave-dev-rsa-key",
+        "name": "brainwave-dev-rsa",
+        "providerId": "rsa",
+        "subComponents": {},
+        "config": {
+          "privateKey": [
+            "MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDTD9QukPweU+WYXnr8edXm9//dSPcMf3fvz0f0ErBK8C4+8KXsFE1nPSlhPaTRhkocb04VKkTVbL6zMWoFZMvOC4vmvvsGlIaEVXnYkycClYyunbQGaN89tgaDKvRccX6z0yW9oaSfgoxEXxn2amJMfg5h5sfPSzH95I1y+MwJZPXVpL1FJlVlUMOW3cI64Mu3zktC/3s4kikjQI87BgM89f+jp7p4Il0QfYgqQs4N6E7xPcXVJd9G+c3Q6FFU98sbUlovOQFCZvazSxENy1gSy/Q/h9f1PphlIyuTc9hr7IR2PdEDwAbuUT33QYXFIdYwWr3NtCu0JKnAAklzK7A/AgMBAAECggEASw/QksUOXQzSVSeYzqzX1V4yuXSnI+M7eOZ7fQKefvA/SjQUlkq8InC+hC5DrR54wfcVynIva8XSZnE29vcbgkpZ9XTLWtI8qtipTkw7LfCYyUsdyL/IUS6oz0JaCHx2pqZ7wB66KN5pWzGFTr0T+4dDPy8vtXnVLCn54j84dUg0TW3Do/vh/QPHiIiARsk081X94p3kc/Z0/K85Y7FnIUpFSe7zE8UMmWlfxdQb9tQpc7P05Tvj6r8gKdMx+6UId6XPaqdhhqTYHEpjgFGjxKRUS0n6pohb6Q6wjz6OlQ4Aw6ud5FjTgmpFzhZyvGRN681qItRiNgdKKzVDInOvPQKBgQDXDqr2KflXaiusN7RFFIi4+PpuqoGNuhtzlQeGc0Wdppl7goMisfSilDHo1fKEjeqJrGc/3xfa+QvCn9SF5IGJS7jDkDHcEjllx4O6RT6qhzyeqET4wi4TRA1YcWnID953ApGdZqGxXIdkP6oMoyFi6zpxw9kErJOL6vcwNu1qMwKBgQD7Pm62uhYH/mM5lQlD3gGdAaFiWkW2gwGkI7fVYiwPVis8xbfqZrlvh0jm5ATJxynfQe8PPjEbk78fcMRoTDXeu0LDK8jqb8veqU+9sR1PERSxOcQSjwCnpWXgmX10Mv3nNehisJcKPGNSXMg2/GS87L+ewjtbde95cNt4T/otxQKBgFhCHMeJ0lqdp+61rbXsB3BiPeTM9P5FMp7sunnjNN7OUI7vsQG8JrnSN+lmZHEiDO8TYgxEcnXbX4gwL/gDH2ZJPTqFIvE+SXALwXPglydE+Qvj4up0RpSBiTiS0ubYHGSbGUePpywy3R23QwKMsFb4UrP9vEK+0I7Lj0aqRCUhAoGBAK0uDbaaclE0QkUQvAAx6T7GPu3Cd8ckal8v16mYL/KqXMdZKjrCcBO2VsQAbGSBihVAJ36ESelOYDFV06xoy8Eppw1NAwLF6OskHbkNerxjc7XtsX9xXuwwEBdO9bDA7U8QU4yjWJlPos7E8aUlOHMZZcQS8kNK+bTl3AIEbthZAoGAefm098kUaRqTtaCVEAPFTVKgKuyre3ddV2RJnbtudjD+7YNmKLJBjYezNxjm6XFN/802iViMrPG5bWM7dcs0Yg2liuq0mk4gQCnKnTjwyNC0j+n8Z+AWsauldG9ChVKCl8kyMui1jCEf6cv3pXOg7xEkc18c9bWAlYGNpxhSdc8="
+          ],
+          "active":   ["true"],
+          "enabled":  ["true"],
+          "priority": ["100"],
+          "keySize":  ["2048"]
+        }
+      }
+    ]
+  },
+
+  "passwordPolicy": "length(8) and notUsername(undefined) and notEmail(undefined)",
+
+  "smtpServer": {},
+
+  "loginTheme": "keycloak",
+  "accountTheme": "keycloak.v3",
+  "adminTheme": "keycloak.v2",
+  "emailTheme": "keycloak",
+
+  "internationalizationEnabled": false,
+  "supportedLocales": ["en"],
+  "defaultLocale": "en",
+
+  "users": [
+    {
+      "username": "dev-admin",
+      "email": "dev-admin@brainwave.local",
+      "firstName": "Dev",
+      "lastName": "Admin",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "admin123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["ADMIN"]
+    },
+    {
+      "username": "dev-editor",
+      "email": "dev-editor@brainwave.local",
+      "firstName": "Dev",
+      "lastName": "Editor",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "editor123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["EDITOR"]
+    },
+    {
+      "username": "dev-viewer",
+      "email": "dev-viewer@brainwave.local",
+      "firstName": "Dev",
+      "lastName": "Viewer",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "viewer123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["VIEWER"]
+    }
+  ],
+
+  "scopeMappings": [],
+  "clientScopeMappings": {}
+}

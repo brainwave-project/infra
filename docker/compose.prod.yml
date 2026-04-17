@@ -1,0 +1,255 @@
+# =============================================================================
+# Production overrides — applied on top of compose.yml
+# =============================================================================
+# Key differences from staging:
+#   - Kong Admin API (8001) NOT exposed at all — zero surface area
+#   - Hard resource limits (OOM protection)
+#   - Security hardening: no-new-privileges, cap_drop ALL, read_only where possible
+#   - Keycloak: KC_HOSTNAME_STRICT enforced, KC_PROXY=edge
+#   - Images pinned to digest (not just tag) — supply via IMAGE_DIGEST env var
+#   - No internal DB ports exposed (all cross-service via Docker network only)
+#   - All restarts: always
+#
+# Required env vars: KC_HOSTNAME, PUBLIC_DOMAIN, REGISTRY, IMAGE_ORG,
+#   IMAGE_TAG (or IMAGE_DIGEST per service), POSTGRES_USER, POSTGRES_PASSWORD,
+#   POSTGRES_DB, MONGO_USER, MONGO_PASSWORD, MONGO_DB, MINIO_ROOT_USER,
+#   MINIO_ROOT_PASSWORD, KEYCLOAK_ADMIN_USER, KEYCLOAK_ADMIN_PASSWORD,
+#   KEYCLOAK_AUTH_HUB_SECRET
+#
+# NOTE: In a real production environment, consider Docker Swarm secrets or a
+#   secrets manager (Vault, AWS SSM) instead of .env files for credentials.
+#
+# Usage:
+#   make prod
+#   docker compose -f docker/compose.yml -f docker/compose.prod.yml \
+#     --env-file env/.env.prod up -d
+# =============================================================================
+
+services:
+
+  postgres:
+    restart: always
+    # No port binding — only accessible within the brainwave Docker network
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "1.0"
+        reservations:
+          memory: 512M
+
+  mongodb:
+    restart: always
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "1.0"
+        reservations:
+          memory: 512M
+
+  minio:
+    restart: always
+    # Only expose S3 API — console disabled in prod (manage via mc CLI or SSH tunnel)
+    ports:
+      - "127.0.0.1:9000:9000"
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+        reservations:
+          memory: 256M
+
+  keycloak:
+    restart: always
+    command: start --import-realm
+    environment:
+      KC_DB:              postgres
+      KC_DB_URL:          jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+      KC_DB_USERNAME:     ${POSTGRES_USER}
+      KC_DB_PASSWORD:     ${POSTGRES_PASSWORD}
+      KC_HOSTNAME:        ${KC_HOSTNAME}            # e.g. auth.brainwave.io
+      KC_HOSTNAME_STRICT: "true"                    # Reject requests to other hostnames
+      KC_HTTP_PORT:       "8080"
+      KC_HTTP_ENABLED:    "true"                    # TLS terminated at edge (ALB/nginx)
+      KC_PROXY:           edge
+      KC_PROXY_HEADERS:   xforwarded
+      KC_LOG_LEVEL:       warn                      # Reduce noise in prod; use audit logs
+      # Token cache and connection pool tuning
+      KC_SPI_CONNECTIONS_JPA_LEGACY_INITIALIZE_EMPTY: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8080:8080"
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "1.0"
+        reservations:
+          memory: 512M
+
+  kong:
+    restart: always
+    environment:
+      # Admin API completely disabled — no port, no socket
+      # Use `docker exec brainwave-kong kong` or rebuild config for changes
+      KONG_ADMIN_LISTEN: "off"
+      KONG_LOG_LEVEL:    warn
+      # Production proxy tuning
+      KONG_NGINX_WORKER_PROCESSES: auto
+      KONG_NGINX_PROXY_KEEPALIVE:  "60"
+    ports:
+      - "8000:8000"   # TLS terminated at edge — expose only the proxy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE    # Needed to bind to port < 1024 if ever configured
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+        reservations:
+          memory: 256M
+
+  # ---------------------------------------------------------------------------
+  # Application services (opt-in: --profile services)
+  # Pinned images, hard resource limits, no debug ports, security hardened.
+  # ---------------------------------------------------------------------------
+
+  auth-hub:
+    profiles: [services]
+    image: ${REGISTRY}/${IMAGE_ORG}/auth-hub:${IMAGE_TAG}
+    container_name: brainwave-auth-hub
+    restart: always
+    environment:
+      PORT:                       ${AUTH_HUB_PORT:-3000}
+      GRPC_PORT:                  ${AUTH_HUB_GRPC_PORT:-50051}
+      NODE_ENV:                   production
+      SERVICE_NAME:               auth-hub
+      LOG_LEVEL:                  info
+      DB_HOST:                    postgres
+      DB_PORT:                    "5432"
+      DB_NAME:                    ${POSTGRES_DB}
+      DB_USER:                    ${POSTGRES_USER}
+      DB_PASS:                    ${POSTGRES_PASSWORD}
+      KEYCLOAK_BASE_URL:          http://keycloak:8080
+      KEYCLOAK_REALM:             brainwave
+      KEYCLOAK_CLIENT_ID:         auth-hub-service
+      KEYCLOAK_CLIENT_SECRET:     ${KEYCLOAK_AUTH_HUB_SECRET}
+      KEYCLOAK_REDIRECT_BASE_URL: https://${PUBLIC_DOMAIN}
+    # Ports exposed to loopback only — Kong reaches services via internal Docker network
+    ports:
+      - "127.0.0.1:${AUTH_HUB_PORT:-3000}:3000"
+      - "127.0.0.1:${AUTH_HUB_GRPC_PORT:-50051}:50051"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+        reservations:
+          memory: 256M
+    networks:
+      - brainwave
+
+  user-hub:
+    profiles: [services]
+    image: ${REGISTRY}/${IMAGE_ORG}/user-hub:${IMAGE_TAG}
+    container_name: brainwave-user-hub
+    restart: always
+    environment:
+      PORT:               ${USER_HUB_PORT:-3001}
+      NODE_ENV:           production
+      SERVICE_NAME:       user-hub
+      LOG_LEVEL:          info
+      DB_HOST:            postgres
+      DB_PORT:            "5432"
+      DB_NAME:            ${POSTGRES_DB}
+      DB_USER:            ${POSTGRES_USER}
+      DB_PASS:            ${POSTGRES_PASSWORD}
+      AUTH_HUB_GRPC_HOST: auth-hub:50051
+    ports:
+      - "127.0.0.1:${USER_HUB_PORT:-3001}:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      auth-hub:
+        condition: service_started
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+        reservations:
+          memory: 256M
+    networks:
+      - brainwave
+
+  know-hub:
+    profiles: [services]
+    image: ${REGISTRY}/${IMAGE_ORG}/know-hub:${IMAGE_TAG}
+    container_name: brainwave-know-hub
+    restart: always
+    environment:
+      PORT:         ${KNOW_HUB_PORT:-3002}
+      NODE_ENV:     production
+      SERVICE_NAME: know-hub
+      LOG_LEVEL:    info
+      DB_HOST:      postgres
+      DB_PORT:      "5432"
+      DB_NAME:      ${POSTGRES_DB}
+      DB_USER:      ${POSTGRES_USER}
+      DB_PASS:      ${POSTGRES_PASSWORD}
+      MONGO_URI:    mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongodb:27017/${MONGO_DB}?authSource=admin
+      MINIO_HOST:   minio
+      MINIO_PORT:   "9000"
+      MINIO_USER:   ${MINIO_ROOT_USER}
+      MINIO_PASS:   ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "127.0.0.1:${KNOW_HUB_PORT:-3002}:3002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+        reservations:
+          memory: 256M
+    networks:
+      - brainwave

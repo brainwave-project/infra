@@ -1,0 +1,187 @@
+# =============================================================================
+# Staging overrides — applied on top of compose.yml
+# =============================================================================
+# Key differences from dev:
+#   - Keycloak: `start` (not start-dev) backed by PostgreSQL — persistent realm
+#   - Pre-built images pulled from registry (no source mounts, no build)
+#   - Ports bound to 127.0.0.1 — TLS termination expected at nginx/caddy/ALB
+#   - Kong Admin API restricted to loopback
+#   - Resource reservations in place (soft limits)
+#   - All restarts: always
+#
+# Required env vars (beyond dev): KC_HOSTNAME, PUBLIC_DOMAIN, REGISTRY,
+#   IMAGE_ORG, IMAGE_TAG
+#
+# Usage:
+#   make staging
+#   docker compose -f docker/compose.yml -f docker/compose.staging.yml \
+#     --env-file env/.env.staging up -d
+#
+#   With app services:
+#   docker compose -f docker/compose.yml -f docker/compose.staging.yml \
+#     --env-file env/.env.staging --profile services up -d
+# =============================================================================
+
+services:
+
+  postgres:
+    restart: always
+    ports:
+      - "127.0.0.1:5432:5432"   # Loopback only — access via SSH tunnel or VPN
+
+  mongodb:
+    restart: always
+    ports:
+      - "127.0.0.1:27017:27017"
+
+  minio:
+    restart: always
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+
+  keycloak:
+    restart: always
+    # `start` = production mode: requires HTTPS or KC_PROXY=edge
+    command: start --import-realm
+    environment:
+      # Keycloak backed by PostgreSQL — realm state is persisted across restarts
+      KC_DB:              postgres
+      KC_DB_URL:          jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+      KC_DB_USERNAME:     ${POSTGRES_USER}
+      KC_DB_PASSWORD:     ${POSTGRES_PASSWORD}
+      KC_HOSTNAME:        ${KC_HOSTNAME}          # e.g. auth.staging.brainwave.dev
+      KC_HTTP_PORT:       "8080"
+      KC_HTTP_ENABLED:    "true"
+      KC_PROXY:           edge                    # TLS terminated upstream (nginx/ALB)
+      KC_PROXY_HEADERS:   xforwarded
+      KC_LOG_LEVEL:       info
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8080:8080"
+    deploy:
+      resources:
+        reservations:
+          memory: 512M
+
+  kong:
+    restart: always
+    environment:
+      KONG_ADMIN_LISTEN: "127.0.0.1:8001"   # Loopback only — never route externally
+      KONG_LOG_LEVEL:    info
+    ports:
+      - "8000:8000"    # Exposed — TLS termination upstream
+    deploy:
+      resources:
+        reservations:
+          memory: 256M
+
+  # ---------------------------------------------------------------------------
+  # Application services (opt-in: --profile services)
+  # Pre-built images from registry — no source mounts, no build step.
+  # Set REGISTRY, IMAGE_ORG, IMAGE_TAG in env/.env.staging
+  # ---------------------------------------------------------------------------
+
+  auth-hub:
+    profiles: [services]
+    image: ${REGISTRY}/${IMAGE_ORG}/auth-hub:${IMAGE_TAG}
+    container_name: brainwave-auth-hub
+    restart: always
+    environment:
+      PORT:                       ${AUTH_HUB_PORT:-3000}
+      GRPC_PORT:                  ${AUTH_HUB_GRPC_PORT:-50051}
+      NODE_ENV:                   staging
+      SERVICE_NAME:               auth-hub
+      LOG_LEVEL:                  info
+      DB_HOST:                    postgres
+      DB_PORT:                    "5432"
+      DB_NAME:                    ${POSTGRES_DB}
+      DB_USER:                    ${POSTGRES_USER}
+      DB_PASS:                    ${POSTGRES_PASSWORD}
+      KEYCLOAK_BASE_URL:          http://keycloak:8080
+      KEYCLOAK_REALM:             brainwave
+      KEYCLOAK_CLIENT_ID:         auth-hub-service
+      KEYCLOAK_CLIENT_SECRET:     ${KEYCLOAK_AUTH_HUB_SECRET}
+      KEYCLOAK_REDIRECT_BASE_URL: https://${PUBLIC_DOMAIN}
+    ports:
+      - "127.0.0.1:${AUTH_HUB_PORT:-3000}:3000"
+      - "127.0.0.1:${AUTH_HUB_GRPC_PORT:-50051}:50051"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    deploy:
+      resources:
+        reservations:
+          memory: 256M
+    networks:
+      - brainwave
+
+  user-hub:
+    profiles: [services]
+    image: ${REGISTRY}/${IMAGE_ORG}/user-hub:${IMAGE_TAG}
+    container_name: brainwave-user-hub
+    restart: always
+    environment:
+      PORT:               ${USER_HUB_PORT:-3001}
+      NODE_ENV:           staging
+      SERVICE_NAME:       user-hub
+      LOG_LEVEL:          info
+      DB_HOST:            postgres
+      DB_PORT:            "5432"
+      DB_NAME:            ${POSTGRES_DB}
+      DB_USER:            ${POSTGRES_USER}
+      DB_PASS:            ${POSTGRES_PASSWORD}
+      AUTH_HUB_GRPC_HOST: auth-hub:50051
+    ports:
+      - "127.0.0.1:${USER_HUB_PORT:-3001}:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      auth-hub:
+        condition: service_started
+    deploy:
+      resources:
+        reservations:
+          memory: 256M
+    networks:
+      - brainwave
+
+  know-hub:
+    profiles: [services]
+    image: ${REGISTRY}/${IMAGE_ORG}/know-hub:${IMAGE_TAG}
+    container_name: brainwave-know-hub
+    restart: always
+    environment:
+      PORT:         ${KNOW_HUB_PORT:-3002}
+      NODE_ENV:     staging
+      SERVICE_NAME: know-hub
+      LOG_LEVEL:    info
+      DB_HOST:      postgres
+      DB_PORT:      "5432"
+      DB_NAME:      ${POSTGRES_DB}
+      DB_USER:      ${POSTGRES_USER}
+      DB_PASS:      ${POSTGRES_PASSWORD}
+      MONGO_URI:    mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongodb:27017/${MONGO_DB}?authSource=admin
+      MINIO_HOST:   minio
+      MINIO_PORT:   "9000"
+      MINIO_USER:   ${MINIO_ROOT_USER}
+      MINIO_PASS:   ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "127.0.0.1:${KNOW_HUB_PORT:-3002}:3002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    deploy:
+      resources:
+        reservations:
+          memory: 256M
+    networks:
+      - brainwave

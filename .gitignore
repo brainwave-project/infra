@@ -1,0 +1,37 @@
+# =============================================================================
+# Brainwave infra — .gitignore
+# =============================================================================
+
+# Environment files — NEVER commit real secrets
+.env
+.env.local
+.env.*.local
+
+# env/ directory — only .example files and .env.dev are committed
+env/.env.staging
+env/.env.prod
+# .env.dev IS committed (throwaway dev credentials)
+# .env.staging.example and .env.prod.example ARE committed (templates only)
+
+# Generated RSA key files (created by scripts/rotate-kong-jwt-key.sh)
+*.pem
+!dev-signing-pub.pem   # Public key only is safe to commit for local dev
+
+# Node (for semantic-release)
+node_modules/
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/settings.json
+.idea/
+*.swp
+
+# Temporary MinIO data (never backup local dev volumes to git)
+.minio/
+
+# Kong cache
+.kong_env

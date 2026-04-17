@@ -1,0 +1,170 @@
+# =============================================================================
+# Brainwave — Base Compose (shared across all environments)
+# =============================================================================
+# DO NOT run this file directly. Always pair it with an environment override:
+#
+#   make dev              # or:
+#   docker compose -f docker/compose.yml -f docker/compose.dev.yml \
+#     --env-file env/.env.dev up -d
+#
+# All relative paths here resolve from the docker/ directory:
+#   ../postgres/init  →  infra/postgres/init
+#   ../keycloak       →  infra/keycloak
+#   ../../auth-hub    →  ~/brainwave/auth-hub
+# =============================================================================
+
+name: brainwave
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # PostgreSQL — System of record (user_management + doc schemas)
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: brainwave-postgres
+    environment:
+      POSTGRES_USER:     ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB:       ${POSTGRES_DB}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ../postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - brainwave
+
+  # ---------------------------------------------------------------------------
+  # MongoDB — Dynamic document payload store for KnowHub
+  # ---------------------------------------------------------------------------
+  mongodb:
+    image: mongo:7
+    container_name: brainwave-mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
+      MONGO_INITDB_DATABASE:      ${MONGO_DB}
+    volumes:
+      - mongodb-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - brainwave
+
+  # ---------------------------------------------------------------------------
+  # MinIO — S3-compatible object storage
+  # ---------------------------------------------------------------------------
+  minio:
+    image: minio/minio:RELEASE.2024-11-07T00-52-20Z
+    container_name: brainwave-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER:     ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - brainwave
+
+  # ---------------------------------------------------------------------------
+  # MinIO Init — Creates buckets + lifecycle policies (one-shot on first run)
+  # ---------------------------------------------------------------------------
+  minio-init:
+    image: minio/mc:latest
+    container_name: brainwave-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: /bin/sh /init.sh
+    environment:
+      MINIO_ROOT_USER:     ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_HOST:          minio
+    volumes:
+      - ../minio/init.sh:/init.sh:ro
+    networks:
+      - brainwave
+    restart: "no"
+
+  # ---------------------------------------------------------------------------
+  # Keycloak — Identity Provider
+  # command, KC_DB, KC_HOSTNAME, and ports are all set in environment overrides
+  # ---------------------------------------------------------------------------
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0
+    container_name: brainwave-keycloak
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USER}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+    volumes:
+      - ../keycloak:/opt/keycloak/data/import:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health/ready || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 12
+      start_period: 45s
+    networks:
+      - brainwave
+
+  # ---------------------------------------------------------------------------
+  # Kong — DB-less API Gateway
+  # Admin listen and log level are set in environment overrides
+  # ---------------------------------------------------------------------------
+  kong:
+    image: kong:3.7
+    container_name: brainwave-kong
+    environment:
+      KONG_DATABASE:           "off"
+      KONG_DECLARATIVE_CONFIG: /kong/declarative/kong.yml
+      KONG_PROXY_LISTEN:       0.0.0.0:8000
+      KONG_PLUGINS:            bundled
+      KONG_NGINX_PROXY_READ_TIMEOUT: 60s
+      KONG_NGINX_PROXY_SEND_TIMEOUT: 60s
+    volumes:
+      - ../kong:/kong/declarative:ro
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - brainwave
+
+# =============================================================================
+# Volumes
+# =============================================================================
+volumes:
+  postgres-data:
+    name: brainwave-postgres-data
+  mongodb-data:
+    name: brainwave-mongodb-data
+  minio-data:
+    name: brainwave-minio-data
+
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  brainwave:
+    name: brainwave
+    driver: bridge

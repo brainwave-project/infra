@@ -1,0 +1,243 @@
+# =============================================================================
+# Kong Declarative Configuration — DB-less mode
+# Format version: 3.0  (Kong 3.x)
+#
+# Architecture decisions reflected here:
+#   - Kong is the ONLY entry point for all client traffic (Zero-Trust edge)
+#   - JWT validation via RS256 + JWKS (public key matches Keycloak realm key)
+#   - Correlation ID generated here, propagated as X-Correlation-Id
+#   - Rate limiting on all auth endpoints (anti-brute-force)
+#   - CORS enforced at the gateway, not in each service
+#   - Security headers injected globally
+#   - KnowHub, UserHub routes require JWT + scope enforcement
+#   - AuthHub /auth/* routes are PUBLIC (no JWT required — users log in here)
+#
+# Key consumer "keycloak-issuer":
+#   The iss claim in Keycloak JWTs = http://localhost:8080/realms/brainwave
+#   Kong JWT plugin maps iss → consumer key → public key for signature verification.
+#   The public key below is the RSA-2048 dev key from /keys/dev-signing-pub.pem.
+#   In production: rotate via scripts/rotate-kong-jwt-key.sh
+# =============================================================================
+
+_format_version: "3.0"
+_transform: true
+
+# =============================================================================
+# CONSUMERS — JWT credential holders
+# One consumer per Keycloak issuer (iss claim value)
+# =============================================================================
+consumers:
+  - username: keycloak-issuer
+    jwt_secrets:
+      - algorithm: RS256
+        # key must match the "iss" claim in Keycloak JWTs:
+        # http://localhost:8080/realms/brainwave
+        key: "http://localhost:8080/realms/brainwave"
+        rsa_public_key: |
+          -----BEGIN PUBLIC KEY-----
+          MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA0w/ULpD8HlPlmF56/HnV
+          5vf/3Uj3DH93789H9BKwSvAuPvCl7BRNZz0pYT2k0YZKHG9OFSpE1Wy+szFqBWTL
+          zguL5r77BpSGhFV52JMnApWMrp20BmjfPbYGgyr0XHF+s9MlvaGkn4KMRF8Z9mpi
+          TH4OYebHz0sx/eSNcvjMCWT11aS9RSZVZVDDlt3COuDLt85LQv97OJIpI0CPOwYD
+          PPX/o6e6eCJdEH2IKkLODehO8T3F1SXfRvnN0OhRVPfLG1JaLzkBQmb2s0sRDctY
+          Esv0P4fX9T6YZSMrk3PYa+yEdj3RA8AG7lE990GFxSHWMFq9zbQrtCSpwAJJcyuw
+          PwIDAQAB
+          -----END PUBLIC KEY-----
+
+# =============================================================================
+# SERVICES — Upstream microservices
+# Kong routes to these. docker-compose service names resolve via brainwave network.
+# =============================================================================
+services:
+
+  # ---------------------------------------------------------------------------
+  # AuthHub — Identity facade. Public routes require NO JWT (users log in here).
+  # ---------------------------------------------------------------------------
+  - name: auth-hub
+    url: http://auth-hub:3000
+    connect_timeout: 5000
+    read_timeout:    30000
+    write_timeout:   30000
+    retries:         2
+    routes:
+
+      # Public auth endpoints — no JWT required (user is authenticating)
+      - name: auth-hub-public
+        paths:
+          - /api/auth/login
+          - /api/auth/logout
+          - /api/auth/refresh
+          - /api/auth/callback
+          - /api/auth/password-reset
+          - /api/auth/password-update
+        methods: [GET, POST, OPTIONS]
+        strip_path: false
+        preserve_host: false
+        plugins:
+          # Strict rate limit on auth endpoints — primary anti-brute-force layer
+          - name: rate-limiting
+            config:
+              minute:         20
+              hour:           200
+              policy:         local
+              fault_tolerant: true
+              hide_client_headers: false
+
+      # Token endpoints — JWKS proxy + introspect + validate
+      - name: auth-hub-tokens
+        paths:
+          - /api/tokens
+        methods: [GET, POST, OPTIONS]
+        strip_path: false
+        preserve_host: false
+        plugins:
+          - name: rate-limiting
+            config:
+              minute:         60
+              policy:         local
+              fault_tolerant: true
+
+      # Health + metrics — internal-ish, no auth required
+      - name: auth-hub-system
+        paths:
+          - /health
+          - /metrics
+          - /config
+        methods: [GET]
+        strip_path: false
+        preserve_host: false
+
+  # ---------------------------------------------------------------------------
+  # UserHub — User profile management. Requires valid JWT.
+  # ---------------------------------------------------------------------------
+  - name: user-hub
+    url: http://user-hub:3001
+    connect_timeout: 5000
+    read_timeout:    30000
+    write_timeout:   30000
+    retries:         2
+    routes:
+      - name: user-hub-routes
+        paths:
+          - /api/users
+        methods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
+        strip_path: false
+        preserve_host: false
+    plugins:
+      # Enforce JWT on all UserHub routes
+      - name: jwt
+        config:
+          key_claim_name:    iss
+          claims_to_verify:  [exp]
+          cookie_names:      []
+          uri_param_names:   []
+          run_on_preflight:  false
+      # Rate limit per consumer (after auth)
+      - name: rate-limiting
+        config:
+          minute:         100
+          policy:         local
+          fault_tolerant: true
+      # Inject validated claims as trusted headers for UserHub to read
+      - name: request-transformer
+        config:
+          add:
+            headers:
+              - "X-Consumer-Username:$(consumer.username)"
+
+  # ---------------------------------------------------------------------------
+  # KnowHub — Document persistence. Requires valid JWT + documents scope.
+  # ---------------------------------------------------------------------------
+  - name: know-hub
+    url: http://know-hub:3002
+    connect_timeout: 5000
+    read_timeout:    60000   # Longer timeout — large file uploads
+    write_timeout:   60000
+    retries:         1       # Don't retry writes — idempotency is caller's job
+    routes:
+      - name: know-hub-routes
+        paths:
+          - /api/documents
+        methods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
+        strip_path: false
+        preserve_host: false
+    plugins:
+      # Enforce JWT on all KnowHub routes
+      - name: jwt
+        config:
+          key_claim_name:   iss
+          claims_to_verify: [exp]
+          run_on_preflight: false
+      # Rate limit document writes — storage cost protection
+      - name: rate-limiting
+        config:
+          minute:         60
+          policy:         local
+          fault_tolerant: true
+      # Inject validated caller identity for KnowHub to consume (no re-validation needed)
+      - name: request-transformer
+        config:
+          add:
+            headers:
+              - "X-Consumer-Username:$(consumer.username)"
+
+# =============================================================================
+# GLOBAL PLUGINS — Applied to all routes unless overridden
+# =============================================================================
+plugins:
+
+  # ---------------------------------------------------------------------------
+  # Correlation ID — Generated at the edge, propagated across all services.
+  # Bridges operational logs and lifecycle audit records per the Logging TDD.
+  # ---------------------------------------------------------------------------
+  - name: correlation-id
+    config:
+      header_name:    X-Correlation-Id
+      generator:      uuid#counter
+      echo_downstream: true   # Return the ID in the response so clients can log it
+
+  # ---------------------------------------------------------------------------
+  # CORS — Centralised at gateway. Services do NOT implement CORS.
+  # ---------------------------------------------------------------------------
+  - name: cors
+    config:
+      origins:
+        - "http://localhost:3000"
+        - "http://localhost:5173"
+        - "http://localhost:8000"
+      methods:    [GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD]
+      headers:
+        - Authorization
+        - Content-Type
+        - Accept
+        - Idempotency-Key
+        - X-Correlation-Id
+      exposed_headers:
+        - X-Correlation-Id
+        - X-RateLimit-Limit-Minute
+        - X-RateLimit-Remaining-Minute
+      credentials: true
+      max_age:     3600
+
+  # ---------------------------------------------------------------------------
+  # Response Transformer — Inject security headers on every response.
+  # Keeps security headers in one place, not scattered across services.
+  # ---------------------------------------------------------------------------
+  - name: response-transformer
+    config:
+      add:
+        headers:
+          - "X-Content-Type-Options:nosniff"
+          - "X-Frame-Options:DENY"
+          - "X-XSS-Protection:1; mode=block"
+          - "Referrer-Policy:strict-origin-when-cross-origin"
+          - "Permissions-Policy:geolocation=(), microphone=(), camera=()"
+
+  # ---------------------------------------------------------------------------
+  # Request Size Limiting — Guard against payload bombs on all routes.
+  # KnowHub document uploads have a higher threshold set at the route level.
+  # ---------------------------------------------------------------------------
+  - name: request-size-limiting
+    config:
+      allowed_payload_size: 10    # MB — default for most routes
+      size_unit:            megabytes

@@ -1,0 +1,172 @@
+# =============================================================================
+# Dev overrides — applied on top of compose.yml
+# =============================================================================
+# Keycloak: start-dev + in-memory DB (fastest startup, no persistence)
+# All service ports exposed on 0.0.0.0 (localhost access)
+# Kong Admin API exposed for local debugging
+# App services: source-mounted for hot reload, ts-node for TypeScript
+#
+# Usage:
+#   make dev
+#   docker compose -f docker/compose.yml -f docker/compose.dev.yml \
+#     --env-file env/.env.dev up -d
+#
+#   With app services:
+#   docker compose -f docker/compose.yml -f docker/compose.dev.yml \
+#     --env-file env/.env.dev --profile services up -d
+# =============================================================================
+
+services:
+
+  postgres:
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+
+  mongodb:
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+
+  minio:
+    restart: unless-stopped
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # Web console → http://localhost:9001
+
+  keycloak:
+    restart: unless-stopped
+    # start-dev: embedded H2 DB, no TLS required, faster startup
+    command: start-dev --import-realm
+    environment:
+      KC_DB:        dev-mem    # In-memory — realm is re-imported from file on every restart
+      KC_HOSTNAME:  localhost
+      KC_HTTP_PORT: "8080"
+      KC_LOG_LEVEL: info
+    ports:
+      - "8080:8080"   # Admin: http://localhost:8080/admin
+
+  kong:
+    restart: unless-stopped
+    environment:
+      KONG_ADMIN_LISTEN: 0.0.0.0:8001   # Exposed locally for debugging
+      KONG_LOG_LEVEL:    info
+    ports:
+      - "8000:8000"   # Proxy — all client traffic here
+      - "8001:8001"   # Admin API — local debug only, NEVER expose in prod
+
+  # ---------------------------------------------------------------------------
+  # Application services (opt-in: --profile services)
+  # Requires repos cloned as siblings: ../auth-hub, ../user-hub, ../know-hub
+  # Source is bind-mounted so nodemon/ts-node picks up changes immediately.
+  # ---------------------------------------------------------------------------
+
+  auth-hub:
+    profiles: [services]
+    build:
+      context: ../../auth-hub
+      dockerfile: Dockerfile
+    container_name: brainwave-auth-hub
+    restart: unless-stopped
+    # Override Dockerfile CMD — auth-hub Dockerfile has a TypeScript compilation bug (CMD references .js)
+    # This runs TypeScript directly via ts-node for local dev
+    command: sh -c "npm install && node --loader ts-node/esm src/index.ts"
+    environment:
+      PORT:                       ${AUTH_HUB_PORT:-3000}
+      GRPC_PORT:                  ${AUTH_HUB_GRPC_PORT:-50051}
+      NODE_ENV:                   development
+      SERVICE_NAME:               auth-hub
+      LOG_LEVEL:                  debug
+      DB_HOST:                    postgres
+      DB_PORT:                    "5432"
+      DB_NAME:                    ${POSTGRES_DB}
+      DB_USER:                    ${POSTGRES_USER}
+      DB_PASS:                    ${POSTGRES_PASSWORD}
+      KEYCLOAK_BASE_URL:          http://keycloak:8080
+      KEYCLOAK_REALM:             brainwave
+      KEYCLOAK_CLIENT_ID:         auth-hub-service
+      KEYCLOAK_CLIENT_SECRET:     ${KEYCLOAK_AUTH_HUB_SECRET}
+      KEYCLOAK_REDIRECT_BASE_URL: http://localhost:8000
+    ports:
+      - "${AUTH_HUB_PORT:-3000}:3000"
+      - "${AUTH_HUB_GRPC_PORT:-50051}:50051"
+    volumes:
+      - ../../auth-hub:/app        # Bind-mount source for hot reload
+      - /app/node_modules          # Anonymous volume prevents host node_modules from shadowing
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    networks:
+      - brainwave
+
+  user-hub:
+    profiles: [services]
+    build:
+      context: ../../user-hub
+      dockerfile: Dockerfile
+    container_name: brainwave-user-hub
+    restart: unless-stopped
+    command: sh -c "npm install && node --loader ts-node/esm src/index.ts"
+    environment:
+      PORT:               ${USER_HUB_PORT:-3001}
+      NODE_ENV:           development
+      SERVICE_NAME:       user-hub
+      LOG_LEVEL:          debug
+      DB_HOST:            postgres
+      DB_PORT:            "5432"
+      DB_NAME:            ${POSTGRES_DB}
+      DB_USER:            ${POSTGRES_USER}
+      DB_PASS:            ${POSTGRES_PASSWORD}
+      AUTH_HUB_GRPC_HOST: auth-hub:50051
+    ports:
+      - "${USER_HUB_PORT:-3001}:3001"
+    volumes:
+      - ../../user-hub:/app
+      - /app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      auth-hub:
+        condition: service_started
+    networks:
+      - brainwave
+
+  know-hub:
+    profiles: [services]
+    build:
+      context: ../../know-hub
+      dockerfile: Dockerfile
+    container_name: brainwave-know-hub
+    restart: unless-stopped
+    command: sh -c "npm install && node --loader ts-node/esm src/index.ts"
+    environment:
+      PORT:         ${KNOW_HUB_PORT:-3002}
+      NODE_ENV:     development
+      SERVICE_NAME: know-hub
+      LOG_LEVEL:    debug
+      DB_HOST:      postgres
+      DB_PORT:      "5432"
+      DB_NAME:      ${POSTGRES_DB}
+      DB_USER:      ${POSTGRES_USER}
+      DB_PASS:      ${POSTGRES_PASSWORD}
+      MONGO_URI:    mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongodb:27017/${MONGO_DB}?authSource=admin
+      MINIO_HOST:   minio
+      MINIO_PORT:   "9000"
+      MINIO_USER:   ${MINIO_ROOT_USER}
+      MINIO_PASS:   ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "${KNOW_HUB_PORT:-3002}:3002"
+    volumes:
+      - ../../know-hub:/app
+      - /app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - brainwave
