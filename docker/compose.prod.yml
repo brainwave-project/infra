@@ -1,5 +1,5 @@
-# =============================================================================
-# Production overrides — applied on top of compose.yml
+﻿# =============================================================================
+# Production overrides â€” applied on top of compose.yml
 # =============================================================================
 # Pulls pre-built service images from GitHub Container Registry (ghcr.io)
 # instead of building from source. No volume mounts or hot-reload.
@@ -16,23 +16,23 @@
 services:
 
   postgres:
-    restart: always
+    restart: on-failure:3
     ports:
       - "5432:5432"
 
   mongodb:
-    restart: always
+    restart: on-failure:3
     ports:
       - "27017:27017"
 
   minio:
-    restart: always
+    restart: on-failure:3
     ports:
       - "9000:9000"
       - "9001:9001"
 
   keycloak:
-    restart: always
+    restart: on-failure:3
     command: start-dev --import-realm
     environment:
       KC_DB:        dev-file
@@ -43,13 +43,13 @@ services:
       - "8080:8080"
 
   kong:
-    restart: always
+    restart: on-failure:3
     ports:
       - "8000:8000"
       - "8001:8001"
 
   # ---------------------------------------------------------------------------
-  # Application services — pull pre-built images from ghcr.io
+  # Application services â€” pull pre-built images from ghcr.io
   # No volumes, no hot-reload. Database migrations run on startup via init.sql.
   # ---------------------------------------------------------------------------
 
@@ -57,7 +57,7 @@ services:
     profiles: [services]
     image: ${GHCR_REGISTRY:-ghcr.io}/${GHCR_OWNER}/brainwave-auth-hub:${GHCR_TAG:-latest}
     container_name: brainwave-auth-hub
-    restart: always
+    restart: on-failure:3
     environment:
       PORT:                       ${AUTH_HUB_PORT:-3000}
       GRPC_PORT:                  ${AUTH_HUB_GRPC_PORT:-50051}
@@ -92,7 +92,7 @@ services:
     profiles: [services]
     image: ${GHCR_REGISTRY:-ghcr.io}/${GHCR_OWNER}/brainwave-user-hub:${GHCR_TAG:-latest}
     container_name: brainwave-user-hub
-    restart: always
+    restart: on-failure:3
     environment:
       PORT:                    ${USER_HUB_PORT:-3001}
       NODE_ENV:                production
@@ -123,7 +123,7 @@ services:
     profiles: [services]
     image: ${GHCR_REGISTRY:-ghcr.io}/${GHCR_OWNER}/brainwave-know-hub:${GHCR_TAG:-latest}
     container_name: brainwave-know-hub
-    restart: always
+    restart: on-failure:3
     environment:
       PORT:             ${KNOW_HUB_PORT:-3002}
       NODE_ENV:         production
@@ -152,3 +152,4 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+
