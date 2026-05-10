@@ -33,6 +33,12 @@ services:
 
   keycloak:
     restart: always
+    command: start-dev --import-realm
+    environment:
+      KC_DB:        dev-file
+      KC_HOSTNAME:  localhost
+      KC_HTTP_PORT: "8080"
+      KC_LOG_LEVEL: info
     ports:
       - "8080:8080"
 
@@ -49,7 +55,7 @@ services:
 
   auth-hub:
     profiles: [services]
-    image: ${GHCR_REGISTRY:-ghcr.io}/${GHCR_OWNER}/${GHCR_REPO}/brainwave-auth-hub:${GHCR_TAG:-latest}
+    image: ${GHCR_REGISTRY:-ghcr.io}/${GHCR_OWNER}/brainwave-auth-hub:${GHCR_TAG:-latest}
     container_name: brainwave-auth-hub
     restart: always
     environment:
@@ -84,7 +90,7 @@ services:
 
   user-hub:
     profiles: [services]
-    image: ${GHCR_REGISTRY:-ghcr.io}/${GHCR_OWNER}/${GHCR_REPO}/brainwave-user-hub:${GHCR_TAG:-latest}
+    image: ${GHCR_REGISTRY:-ghcr.io}/${GHCR_OWNER}/brainwave-user-hub:${GHCR_TAG:-latest}
     container_name: brainwave-user-hub
     restart: always
     environment:
@@ -115,7 +121,7 @@ services:
 
   know-hub:
     profiles: [services]
-    image: ${GHCR_REGISTRY:-ghcr.io}/${GHCR_OWNER}/${GHCR_REPO}/brainwave-know-hub:${GHCR_TAG:-latest}
+    image: ${GHCR_REGISTRY:-ghcr.io}/${GHCR_OWNER}/brainwave-know-hub:${GHCR_TAG:-latest}
     container_name: brainwave-know-hub
     restart: always
     environment:

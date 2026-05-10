@@ -133,6 +133,29 @@ services:
           cookie_names:      []
           uri_param_names:   []
           run_on_preflight:  false
+      # Extract sub claim from validated JWT and forward as X-User-Id to upstream
+      - name: post-function
+        config:
+          access:
+            - |
+              local auth = kong.request.get_header("authorization")
+              if not auth then return end
+              local token = auth:match("^[Bb]earer%s+(.+)$")
+              if not token then return end
+              local parts = {}
+              for part in token:gmatch("[^.]+") do parts[#parts+1] = part end
+              if #parts ~= 3 then return end
+              local b64 = parts[2]
+              local r = #b64 % 4
+              if r == 2 then b64 = b64 .. "=="
+              elseif r == 3 then b64 = b64 .. "=" end
+              b64 = b64:gsub("-", "+"):gsub("_", "/")
+              local json = ngx.decode_base64(b64)
+              if not json then return end
+              local sub = json:match('"sub"%s*:%s*"([^"]+)"')
+              if sub then
+                kong.service.request.set_header("X-User-Id", sub)
+              end
       # Rate limit per consumer (after auth)
       - name: rate-limiting
         config:
@@ -163,6 +186,29 @@ services:
           key_claim_name:   iss
           claims_to_verify: [exp]
           run_on_preflight: false
+      # Extract sub claim from validated JWT and forward as X-User-Id to upstream
+      - name: post-function
+        config:
+          access:
+            - |
+              local auth = kong.request.get_header("authorization")
+              if not auth then return end
+              local token = auth:match("^[Bb]earer%s+(.+)$")
+              if not token then return end
+              local parts = {}
+              for part in token:gmatch("[^.]+") do parts[#parts+1] = part end
+              if #parts ~= 3 then return end
+              local b64 = parts[2]
+              local r = #b64 % 4
+              if r == 2 then b64 = b64 .. "=="
+              elseif r == 3 then b64 = b64 .. "=" end
+              b64 = b64:gsub("-", "+"):gsub("_", "/")
+              local json = ngx.decode_base64(b64)
+              if not json then return end
+              local sub = json:match('"sub"%s*:%s*"([^"]+)"')
+              if sub then
+                kong.service.request.set_header("X-User-Id", sub)
+              end
       # Rate limit document writes — storage cost protection
       - name: rate-limiting
         config:
