@@ -153,8 +153,8 @@ CREATE OR REPLACE TRIGGER documents_set_updated_at
 GRANT SELECT, INSERT, UPDATE, DELETE ON doc.documents         TO knowhub_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON doc.document_versions TO knowhub_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON doc.idempotency_keys  TO knowhub_app;
-GRANT USAGE, SELECT ON SEQUENCE doc.document_lifecycle_id_seq  TO knowhub_app;
-GRANT USAGE, SELECT ON SEQUENCE doc.idempotency_keys_key_user_id_seq TO knowhub_app;
+GRANT USAGE, SELECT ON SEQUENCE doc.document_lifecycle_id_seq TO knowhub_app;
+-- idempotency_keys has a composite PK (key, user_id) — no sequence to grant.
 
 -- document_lifecycle: INSERT only. No UPDATE, no DELETE. Audit trail is immutable.
 GRANT INSERT, SELECT ON doc.document_lifecycle TO knowhub_app;

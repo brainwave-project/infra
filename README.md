@@ -104,7 +104,7 @@ docker compose -f docker/compose.yml -f docker/compose.prod.yml \
 | Kong Admin API | http://localhost:8001                  | Local only — never expose      |
 | Keycloak Admin | http://localhost:8080/admin            | admin / see .env               |
 | Keycloak OIDC  | http://localhost:8080/realms/brainwave | Token issuer                   |
-| PostgreSQL     | localhost:5432                         | brainwave / see .env           |
+| PostgreSQL     | localhost:6632                         | brainwave / see .env           |
 | MongoDB        | localhost:27017                        | brainwave / see .env           |
 | MinIO Console  | http://localhost:9001                  | minio-admin / see .env         |
 | MinIO S3 API   | http://localhost:9000                  | S3-compatible endpoint         |

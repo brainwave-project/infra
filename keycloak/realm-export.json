@@ -98,7 +98,7 @@
       "secret": "auth-hub-dev-secret-change-in-prod",
       "standardFlowEnabled": false,
       "implicitFlowEnabled": false,
-      "directAccessGrantsEnabled": false,
+      "directAccessGrantsEnabled": true,
       "serviceAccountsEnabled": true,
       "authorizationServicesEnabled": false,
       "attributes": {}

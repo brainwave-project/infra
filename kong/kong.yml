@@ -123,6 +123,7 @@ services:
         methods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
         strip_path: false
         preserve_host: false
+      # Swagger docs — no auth required
     plugins:
       # Enforce JWT on all UserHub routes
       - name: jwt
@@ -138,12 +139,6 @@ services:
           minute:         100
           policy:         local
           fault_tolerant: true
-      # Inject validated claims as trusted headers for UserHub to read
-      - name: request-transformer
-        config:
-          add:
-            headers:
-              - "X-Consumer-Username:$(consumer.username)"
 
   # ---------------------------------------------------------------------------
   # KnowHub — Document persistence. Requires valid JWT + documents scope.
@@ -174,12 +169,6 @@ services:
           minute:         60
           policy:         local
           fault_tolerant: true
-      # Inject validated caller identity for KnowHub to consume (no re-validation needed)
-      - name: request-transformer
-        config:
-          add:
-            headers:
-              - "X-Consumer-Username:$(consumer.username)"
 
 # =============================================================================
 # GLOBAL PLUGINS — Applied to all routes unless overridden
@@ -203,6 +192,8 @@ plugins:
     config:
       origins:
         - "http://localhost:3000"
+        - "http://localhost:3001"
+        - "http://localhost:3002"
         - "http://localhost:5173"
         - "http://localhost:8000"
       methods:    [GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD]

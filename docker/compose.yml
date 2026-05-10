@@ -109,16 +109,16 @@ services:
     image: quay.io/keycloak/keycloak:24.0
     container_name: brainwave-keycloak
     environment:
-      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USER}
-      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      KEYCLOAK_ADMIN:          ${KEYCLOAK_ADMIN_USER}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
     volumes:
       - ../keycloak:/opt/keycloak/data/import:ro
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health/ready || exit 1"]
-      interval: 15s
-      timeout: 10s
-      retries: 12
-      start_period: 45s
+      test: ["CMD-SHELL", "timeout 5 bash -c '</dev/tcp/localhost/8080' 2>/dev/null"]
+      interval: 10s
+      timeout: 8s
+      retries: 15
+      start_period: 30s
     networks:
       - brainwave
 
@@ -134,8 +134,6 @@ services:
       KONG_DECLARATIVE_CONFIG: /kong/declarative/kong.yml
       KONG_PROXY_LISTEN:       0.0.0.0:8000
       KONG_PLUGINS:            bundled
-      KONG_NGINX_PROXY_READ_TIMEOUT: 60s
-      KONG_NGINX_PROXY_SEND_TIMEOUT: 60s
     volumes:
       - ../kong:/kong/declarative:ro
     depends_on:

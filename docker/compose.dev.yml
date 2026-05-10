@@ -21,7 +21,7 @@ services:
   postgres:
     restart: unless-stopped
     ports:
-      - "5432:5432"
+      - "6632:5432"
 
   mongodb:
     restart: unless-stopped
@@ -36,10 +36,12 @@ services:
 
   keycloak:
     restart: unless-stopped
-    # start-dev: embedded H2 DB, no TLS required, faster startup
+    # dev-file: H2 written to the container's own filesystem (no volume mount needed).
+    # Avoids the root-owned volume permission error. Data is ephemeral like dev-mem
+    # but migrations initialise reliably before the realm import runs.
     command: start-dev --import-realm
     environment:
-      KC_DB:        dev-mem    # In-memory — realm is re-imported from file on every restart
+      KC_DB:        dev-file
       KC_HOSTNAME:  localhost
       KC_HTTP_PORT: "8080"
       KC_LOG_LEVEL: info
@@ -49,28 +51,28 @@ services:
   kong:
     restart: unless-stopped
     environment:
-      KONG_ADMIN_LISTEN: 0.0.0.0:8001   # Exposed locally for debugging
-      KONG_LOG_LEVEL:    info
+      KONG_ADMIN_LISTEN:    0.0.0.0:8001   # Exposed locally for debugging
+      KONG_LOG_LEVEL:       info
+      KONG_DNS_TTL:         10             # Re-resolve service hostnames every 10s
+      KONG_DNS_STALE_TTL:   5             # Use stale entry for max 5s while re-resolving
     ports:
       - "8000:8000"   # Proxy — all client traffic here
       - "8001:8001"   # Admin API — local debug only, NEVER expose in prod
 
   # ---------------------------------------------------------------------------
   # Application services (opt-in: --profile services)
-  # Requires repos cloned as siblings: ../auth-hub, ../user-hub, ../know-hub
-  # Source is bind-mounted so nodemon/ts-node picks up changes immediately.
+  # Mounts the full monorepo root at /workspace so that file:../core resolves.
+  # Uses node:20-alpine directly — no Dockerfile build step needed for dev.
+  # Named volumes per service keep node_modules isolated from the host.
   # ---------------------------------------------------------------------------
 
   auth-hub:
     profiles: [services]
-    build:
-      context: ../../auth-hub
-      dockerfile: Dockerfile
+    image: node:20-alpine
     container_name: brainwave-auth-hub
+    working_dir: /workspace/auth-hub
     restart: unless-stopped
-    # Override Dockerfile CMD — auth-hub Dockerfile has a TypeScript compilation bug (CMD references .js)
-    # This runs TypeScript directly via ts-node for local dev
-    command: sh -c "npm install && node --loader ts-node/esm src/index.ts"
+    command: sh -c "npm install && npx tsx src/index.ts"
     environment:
       PORT:                       ${AUTH_HUB_PORT:-3000}
       GRPC_PORT:                  ${AUTH_HUB_GRPC_PORT:-50051}
@@ -78,8 +80,6 @@ services:
       SERVICE_NAME:               auth-hub
       LOG_LEVEL:                  debug
       DB_HOST:                    postgres
-      DB_PORT:                    "5432"
-      DB_NAME:                    ${POSTGRES_DB}
       DB_USER:                    ${POSTGRES_USER}
       DB_PASS:                    ${POSTGRES_PASSWORD}
       KEYCLOAK_BASE_URL:          http://keycloak:8080
@@ -91,8 +91,8 @@ services:
       - "${AUTH_HUB_PORT:-3000}:3000"
       - "${AUTH_HUB_GRPC_PORT:-50051}:50051"
     volumes:
-      - ../../auth-hub:/app        # Bind-mount source for hot reload
-      - /app/node_modules          # Anonymous volume prevents host node_modules from shadowing
+      - ../../:/workspace
+      - auth-hub-node-modules:/workspace/auth-hub/node_modules
     depends_on:
       postgres:
         condition: service_healthy
@@ -103,28 +103,27 @@ services:
 
   user-hub:
     profiles: [services]
-    build:
-      context: ../../user-hub
-      dockerfile: Dockerfile
+    image: node:20-alpine
     container_name: brainwave-user-hub
+    working_dir: /workspace/user-hub
     restart: unless-stopped
-    command: sh -c "npm install && node --loader ts-node/esm src/index.ts"
+    command: sh -c "apk add --no-cache openssl && npm install && npx prisma generate && npx tsx src/index.ts"
     environment:
-      PORT:               ${USER_HUB_PORT:-3001}
-      NODE_ENV:           development
-      SERVICE_NAME:       user-hub
-      LOG_LEVEL:          debug
-      DB_HOST:            postgres
-      DB_PORT:            "5432"
-      DB_NAME:            ${POSTGRES_DB}
-      DB_USER:            ${POSTGRES_USER}
-      DB_PASS:            ${POSTGRES_PASSWORD}
-      AUTH_HUB_GRPC_HOST: auth-hub:50051
+      PORT:                    ${USER_HUB_PORT:-3001}
+      NODE_ENV:                development
+      SERVICE_NAME:            user-hub
+      LOG_LEVEL:               debug
+      DATABASE_URL:            "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}"
+      AUTH_HUB_GRPC_HOST:      auth-hub
+      AUTH_HUB_GRPC_PORT:      "50051"
+      KEYCLOAK_BASE_URL:       http://keycloak:8080
+      KEYCLOAK_ADMIN_USER:     ${KEYCLOAK_ADMIN_USER}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
     ports:
       - "${USER_HUB_PORT:-3001}:3001"
     volumes:
-      - ../../user-hub:/app
-      - /app/node_modules
+      - ../../:/workspace
+      - user-hub-node-modules:/workspace/user-hub/node_modules
     depends_on:
       postgres:
         condition: service_healthy
@@ -135,32 +134,28 @@ services:
 
   know-hub:
     profiles: [services]
-    build:
-      context: ../../know-hub
-      dockerfile: Dockerfile
+    image: node:20-alpine
     container_name: brainwave-know-hub
+    working_dir: /workspace/know-hub
     restart: unless-stopped
-    command: sh -c "npm install && node --loader ts-node/esm src/index.ts"
+    command: sh -c "apk add --no-cache openssl && npm install && npx prisma generate && npx tsx src/index.ts"
     environment:
-      PORT:         ${KNOW_HUB_PORT:-3002}
-      NODE_ENV:     development
-      SERVICE_NAME: know-hub
-      LOG_LEVEL:    debug
-      DB_HOST:      postgres
-      DB_PORT:      "5432"
-      DB_NAME:      ${POSTGRES_DB}
-      DB_USER:      ${POSTGRES_USER}
-      DB_PASS:      ${POSTGRES_PASSWORD}
-      MONGO_URI:    mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongodb:27017/${MONGO_DB}?authSource=admin
-      MINIO_HOST:   minio
-      MINIO_PORT:   "9000"
-      MINIO_USER:   ${MINIO_ROOT_USER}
-      MINIO_PASS:   ${MINIO_ROOT_PASSWORD}
+      PORT:             ${KNOW_HUB_PORT:-3002}
+      NODE_ENV:         development
+      SERVICE_NAME:     know-hub
+      LOG_LEVEL:        debug
+      DATABASE_URL:     "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}"
+      MONGO_URI:        "mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongodb:27017/${MONGO_DB}?authSource=admin"
+      MINIO_HOST:       minio
+      MINIO_PORT:       "9000"
+      MINIO_USE_SSL:    "false"
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
     ports:
       - "${KNOW_HUB_PORT:-3002}:3002"
     volumes:
-      - ../../know-hub:/app
-      - /app/node_modules
+      - ../../:/workspace
+      - know-hub-node-modules:/workspace/know-hub/node_modules
     depends_on:
       postgres:
         condition: service_healthy
@@ -170,3 +165,11 @@ services:
         condition: service_healthy
     networks:
       - brainwave
+
+volumes:
+  auth-hub-node-modules:
+    name: brainwave-auth-hub-node-modules
+  user-hub-node-modules:
+    name: brainwave-user-hub-node-modules
+  know-hub-node-modules:
+    name: brainwave-know-hub-node-modules
