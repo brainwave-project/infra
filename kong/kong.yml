@@ -30,6 +30,9 @@ consumers:
   - username: keycloak-issuer
     jwt_secrets:
       - algorithm: RS256
+        # `secret` field is unused for RS256 (signature is verified with rsa_public_key),
+        # but Kong's schema marks it required. Use a non-secret placeholder.
+        secret: rs256-asymmetric-not-used
         # key must match the "iss" claim in Keycloak JWTs:
         # http://localhost:8080/realms/brainwave
         key: "http://localhost:8080/realms/brainwave"

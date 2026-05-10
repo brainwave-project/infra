@@ -61,7 +61,7 @@ jobs:
       - name: Validate kong.yml with deck (Kong's official CLI)
         uses: docker://kong/deck:latest
         with:
-          args: file validate --state kong/kong.yml
+          args: file validate kong/kong.yml
 
   # ---------------------------------------------------------------------------
   # Validate PostgreSQL init scripts (syntax check via psql --single-transaction)
@@ -97,15 +97,19 @@ jobs:
           done
 
   # ---------------------------------------------------------------------------
-  # Security: check .env.example doesn't contain real secrets
+  # Security: scan committed history for accidentally committed secrets
+  # Uses the gitleaks Docker image directly — the v2 action requires an
+  # enterprise license for org repos.
   # ---------------------------------------------------------------------------
   secrets-scan:
     name: Secrets Scan
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Scan for committed secrets (gitleaks)
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Run gitleaks
+        run: |
+          docker run --rm -v "$(pwd):/path" zricethezav/gitleaks:latest \
+            git --no-banner --redact /path
