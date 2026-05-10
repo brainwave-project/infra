@@ -1,0 +1,64 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "title": "Brainwave Services Overview",
+  "uid": "brainwave-overview",
+  "version": 1,
+  "schemaVersion": 39,
+  "tags": ["brainwave"],
+  "time": { "from": "now-30m", "to": "now" },
+  "refresh": "10s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "HTTP Request Rate (per service)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "sum(rate(authhub_http_requests_total[1m])) by (status)",  "legendFormat": "auth-hub {{status}}" },
+        { "expr": "sum(rate(userhub_http_requests_total[1m])) by (status)",  "legendFormat": "user-hub {{status}}" },
+        { "expr": "sum(rate(knowhub_http_requests_total[1m])) by (status)",  "legendFormat": "know-hub {{status}}" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "P95 Latency",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "histogram_quantile(0.95, sum(rate(authhub_http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "auth-hub" },
+        { "expr": "histogram_quantile(0.95, sum(rate(userhub_http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "user-hub" },
+        { "expr": "histogram_quantile(0.95, sum(rate(knowhub_http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "know-hub" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Process Memory (Resident MB)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "authhub_process_resident_memory_bytes / (1024*1024)", "legendFormat": "auth-hub" },
+        { "expr": "userhub_process_resident_memory_bytes / (1024*1024)", "legendFormat": "user-hub" },
+        { "expr": "knowhub_process_resident_memory_bytes / (1024*1024)", "legendFormat": "know-hub" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Event Loop Lag (seconds)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "authhub_nodejs_eventloop_lag_seconds", "legendFormat": "auth-hub" },
+        { "expr": "userhub_nodejs_eventloop_lag_seconds", "legendFormat": "user-hub" },
+        { "expr": "knowhub_nodejs_eventloop_lag_seconds", "legendFormat": "know-hub" }
+      ]
+    }
+  ]
+}

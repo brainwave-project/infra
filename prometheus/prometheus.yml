@@ -1,0 +1,35 @@
+# =============================================================================
+# Prometheus scrape config — Brainwave platform
+# =============================================================================
+global:
+  scrape_interval:     15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: brainwave-dev
+    env:     development
+
+scrape_configs:
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: auth-hub
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['auth-hub:3000']
+
+  - job_name: user-hub
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['user-hub:3001']
+
+  - job_name: know-hub
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['know-hub:3002']
+
+  - job_name: kong
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['kong:8001']

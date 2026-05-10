@@ -1,0 +1,86 @@
+# =============================================================================
+# Monitoring + Admin UIs — applied on top of compose.yml
+# =============================================================================
+# Adds:
+#   - Prometheus  (metrics scraping)        → http://localhost:9090
+#   - Grafana     (dashboards)              → http://localhost:3030  (admin/admin)
+#   - Konga       (Kong admin UI)           → http://localhost:1337
+#
+# Existing UIs already exposed by compose.yml/compose.dev.yml:
+#   - MinIO Console    → http://localhost:9001  (creds: minio-admin / minio_dev_pass_8chars)
+#   - Keycloak Admin   → http://localhost:8080/admin
+#   - Kong Admin API   → http://localhost:8001
+#
+# Usage (alongside dev or prod):
+#   docker compose \
+#     -f docker/compose.yml \
+#     -f docker/compose.dev.yml \
+#     -f docker/compose.monitoring.yml \
+#     --env-file env/.env.dev --profile services up -d
+# =============================================================================
+
+services:
+
+  prometheus:
+    image: prom/prometheus:v2.55.0
+    container_name: brainwave-prometheus
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ../prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - brainwave
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    container_name: brainwave-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER:     admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP:     "false"
+      GF_AUTH_ANONYMOUS_ENABLED:  "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ../grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3030:3000"
+    depends_on:
+      prometheus:
+        condition: service_started
+    networks:
+      - brainwave
+
+  konga:
+    image: pantsel/konga:0.14.9
+    container_name: brainwave-konga
+    restart: unless-stopped
+    environment:
+      DB_ADAPTER:      sqlite
+      NODE_ENV:        production
+      KONGA_HOOK_TIMEOUT: "120000"
+    volumes:
+      - konga-data:/app/kongadata
+    ports:
+      - "1337:1337"
+    depends_on:
+      kong:
+        condition: service_started
+    networks:
+      - brainwave
+
+volumes:
+  prometheus-data:
+    name: brainwave-prometheus-data
+  grafana-data:
+    name: brainwave-grafana-data
+  konga-data:
+    name: brainwave-konga-data

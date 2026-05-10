@@ -176,6 +176,7 @@ services:
       - name: know-hub-routes
         paths:
           - /api/documents
+          - /api/notes
         methods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
         strip_path: false
         preserve_host: false
@@ -276,5 +277,17 @@ plugins:
   # ---------------------------------------------------------------------------
   - name: request-size-limiting
     config:
-      allowed_payload_size: 10    # MB — default for most routes
+      allowed_payload_size: 25    # MB — default for most routes
       size_unit:            megabytes
+
+  # ---------------------------------------------------------------------------
+  # Prometheus — Exposes Kong metrics at GET /metrics on the Admin API
+  # Scraped by Prometheus container in compose.monitoring.yml
+  # ---------------------------------------------------------------------------
+  - name: prometheus
+    config:
+      per_consumer:        true
+      status_code_metrics: true
+      latency_metrics:     true
+      bandwidth_metrics:   true
+      upstream_health_metrics: true

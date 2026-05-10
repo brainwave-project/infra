@@ -8,12 +8,13 @@ Local development stack and declarative infrastructure-as-code for the Brainwave
 
 ```
 infra/
-├── Makefile                      # Shortcuts: make dev / make staging / make prod
+├── Makefile                      # Shortcuts: make dev / make staging / make prod / make urls
 ├── docker/
 │   ├── compose.yml               # Base config (shared across all environments)
 │   ├── compose.dev.yml           # Dev: start-dev, all ports, hot-reload mounts
-│   ├── compose.staging.yml       # Staging: Keycloak on PG, registry images, reservations
-│   └── compose.prod.yml          # Prod: no admin port, hard limits, security hardening
+│   ├── compose.staging.yml       # Staging: Keycloak on PG, registry images
+│   ├── compose.prod.yml          # Prod: pulls images from GHCR, hardened
+│   └── compose.monitoring.yml    # Prometheus + Grafana + Konga (admin UIs)
 ├── env/
 │   ├── .env.dev                  # Dev defaults (committed — throwaway credentials)
 │   ├── .env.staging.example      # Staging template (copy → .env.staging, gitignored)
@@ -21,21 +22,20 @@ infra/
 ├── keycloak/
 │   └── realm-export.json         # Realm auto-imported on startup
 ├── kong/
-│   └── kong.yml                  # DB-less declarative gateway config
+│   └── kong.yml                  # DB-less declarative gateway + JWT + Prometheus
+├── prometheus/
+│   └── prometheus.yml            # Scrape config (services + Kong)
+├── grafana/
+│   ├── provisioning/             # Auto-configured datasource + dashboards
+│   └── dashboards/               # JSON dashboards (Brainwave Services Overview)
 ├── postgres/
-│   └── init/
-│       ├── 00-extensions.sql     # uuid-ossp, pgcrypto, citext
-│       ├── 01-schemas.sql        # Schemas + least-privilege roles
-│       ├── 02-user-management.sql # UserHub tables (user_management schema)
-│       └── 03-knowhub.sql        # KnowHub tables (doc schema)
+│   └── init/                     # Schemas + roles + tables (run on first boot)
 ├── minio/
 │   └── init.sh                   # Bucket creation + lifecycle policies
 ├── scripts/
-│   └── rotate-kong-jwt-key.sh    # Key rotation procedure + safety guide
+│   └── rotate-kong-jwt-key.sh    # Key rotation procedure
 └── .github/
-    └── workflows/
-        ├── validate.yml           # Compose lint, Kong lint, SQL lint, secrets scan
-        └── release.yml            # Semantic release on main
+    └── workflows/                # validate.yml, release.yml
 ```
 
 ---
@@ -98,19 +98,24 @@ docker compose -f docker/compose.yml -f docker/compose.prod.yml \
 
 ## Service URLs
 
-| Service        | URL                                    | Notes                          |
-|----------------|----------------------------------------|--------------------------------|
-| Kong Proxy     | http://localhost:8000                  | All API traffic goes here      |
-| Kong Admin API | http://localhost:8001                  | Local only — never expose      |
-| Keycloak Admin | http://localhost:8080/admin            | admin / see .env               |
-| Keycloak OIDC  | http://localhost:8080/realms/brainwave | Token issuer                   |
-| PostgreSQL     | localhost:6632                         | brainwave / see .env           |
-| MongoDB        | localhost:27017                        | brainwave / see .env           |
-| MinIO Console  | http://localhost:9001                  | minio-admin / see .env         |
-| MinIO S3 API   | http://localhost:9000                  | S3-compatible endpoint         |
-| Auth Hub       | http://localhost:3000 (--profile)      | Via Kong: /api/auth/*          |
-| User Hub       | http://localhost:3001 (--profile)      | Via Kong: /api/users/*         |
-| Know Hub       | http://localhost:3002 (--profile)      | Via Kong: /api/documents/*     |
+Run `make urls` to print every URL on stdout.
+
+| Category    | Service        | URL                                    | Default Credentials              |
+|-------------|----------------|----------------------------------------|----------------------------------|
+| Application | UI             | http://localhost:5173                  | —                                |
+| Application | Kong Proxy     | http://localhost:8000                  | All API traffic goes through this|
+| Auth        | Keycloak Admin | http://localhost:8080/admin            | admin / admin_dev_pass           |
+| Services    | Auth Hub       | http://localhost:3000/api/docs         | Swagger                          |
+| Services    | User Hub       | http://localhost:3001/api/docs         | Swagger                          |
+| Services    | Know Hub       | http://localhost:3002/api/docs         | Swagger                          |
+| Storage     | PostgreSQL     | localhost:5432                         | brainwave / brainwave_dev_pass   |
+| Storage     | MongoDB        | localhost:27017                        | brainwave / brainwave_dev_pass   |
+| Storage     | MinIO Console  | http://localhost:9001                  | minio-admin / minio_dev_pass_8chars |
+| Storage     | MinIO S3 API   | http://localhost:9000                  | S3-compatible endpoint           |
+| Admin       | Kong Admin API | http://localhost:8001                  | Local only — never expose        |
+| Admin       | Konga          | http://localhost:1337                  | Connect to: http://kong:8001     |
+| Monitoring  | Prometheus     | http://localhost:9090                  | —                                |
+| Monitoring  | Grafana        | http://localhost:3030                  | admin / admin                    |
 
 ---
 

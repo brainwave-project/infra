@@ -17,13 +17,14 @@
 
 # Base compose files
 BASE   := docker/compose.yml
+MON    := docker/compose.monitoring.yml
 
-DEV_F  := -f $(BASE) -f docker/compose.dev.yml     --env-file env/.env.dev
-STG_F  := -f $(BASE) -f docker/compose.staging.yml --env-file env/.env.staging
-PRD_F  := -f $(BASE) -f docker/compose.prod.yml    --env-file env/.env.prod
+DEV_F  := -f $(BASE) -f docker/compose.dev.yml      -f $(MON) --env-file env/.env.dev
+STG_F  := -f $(BASE) -f docker/compose.staging.yml  -f $(MON) --env-file env/.env.staging
+PRD_F  := -f $(BASE) -f docker/compose.prod.yml     -f $(MON) --env-file env/.env.prod
 
 .PHONY: dev dev-services dev-down staging staging-services prod prod-services \
-        down reset ps logs lint
+        down reset ps logs lint urls monitoring
 
 # ---------------------------------------------------------------------------
 # Dev
@@ -78,6 +79,31 @@ ifdef s
 else
 	docker compose $(DEV_F) logs -f
 endif
+
+# ---------------------------------------------------------------------------
+# Quick reference: management UIs
+# ---------------------------------------------------------------------------
+urls:
+	@echo ""
+	@echo "  Application:"
+	@echo "    UI ........................ http://localhost:5173"
+	@echo "    Kong (API gateway) ........ http://localhost:8000"
+	@echo ""
+	@echo "  Service Swagger:"
+	@echo "    auth-hub .................. http://localhost:3000/api/docs"
+	@echo "    user-hub .................. http://localhost:3001/api/docs"
+	@echo "    know-hub .................. http://localhost:3002/api/docs"
+	@echo ""
+	@echo "  Admin UIs:"
+	@echo "    Keycloak Admin ............ http://localhost:8080/admin   (admin / admin_dev_pass)"
+	@echo "    Kong Admin API ............ http://localhost:8001"
+	@echo "    Konga (Kong UI) ........... http://localhost:1337"
+	@echo "    MinIO Console ............. http://localhost:9001         (minio-admin / minio_dev_pass_8chars)"
+	@echo ""
+	@echo "  Monitoring:"
+	@echo "    Prometheus ................ http://localhost:9090"
+	@echo "    Grafana ................... http://localhost:3030         (admin / admin)"
+	@echo ""
 
 # ---------------------------------------------------------------------------
 # Validation (also runs in CI)
