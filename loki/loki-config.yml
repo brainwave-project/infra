@@ -1,0 +1,61 @@
+# =============================================================================
+# Loki — log aggregation (single-binary, dev mode)
+# =============================================================================
+# Storage: local filesystem (ephemeral — fine for dev)
+# Schema:  v13 / TSDB (Loki 3.x default)
+# Port:    3100 (HTTP)
+# =============================================================================
+
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9096
+  log_level: warn
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /tmp/loki
+  storage:
+    filesystem:
+      chunks_directory: /tmp/loki/chunks
+      rules_directory:  /tmp/loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+# Query performance cache
+query_range:
+  results_cache:
+    cache:
+      embedded_cache:
+        enabled:     true
+        max_size_mb: 100
+
+# Schema — TSDB is the current recommended store (Loki 3.x)
+schema_config:
+  configs:
+    - from:         "2020-10-24"
+      store:        tsdb
+      object_store: filesystem
+      schema:       v13
+      index:
+        prefix: index_
+        period: 24h
+
+# Alerting (forwarded to Alertmanager)
+ruler:
+  alertmanager_url: http://alertmanager:9093
+
+# Limits — generous for dev
+limits_config:
+  reject_old_samples:      true
+  reject_old_samples_age:  168h
+  ingestion_rate_mb:       32
+  ingestion_burst_size_mb: 64
+  max_entries_limit_per_query: 10000
+
+# Disable telemetry reporting to Grafana Labs
+analytics:
+  reporting_enabled: false

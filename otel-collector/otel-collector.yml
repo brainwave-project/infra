@@ -1,0 +1,95 @@
+# =============================================================================
+# OpenTelemetry Collector — telemetry pipeline
+# =============================================================================
+# Receives: OTLP/gRPC (4317), OTLP/HTTP (4318)
+# Exports:
+#   Traces  → Tempo   (4317 OTLP/gRPC)
+#   Metrics → Prometheus scrape endpoint (8889)
+#   Logs    → Loki    (3100 HTTP)
+#
+# Also exposes:
+#   8888 — collector's own internal metrics (scraped by Prometheus)
+#   55679 — zPages debug UI  → http://localhost:55679
+# =============================================================================
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  # Hard memory cap — drop data before OOM
+  memory_limiter:
+    check_interval: 1s
+    limit_mib:      400
+    spike_limit_mib: 100
+
+  # Batch to reduce export round-trips
+  batch:
+    timeout:         1s
+    send_batch_size: 1024
+
+  # Enrich every span/metric/log with cluster context
+  resource:
+    attributes:
+      - key:    cluster
+        value:  brainwave-dev
+        action: insert
+      - key:    environment
+        value:  development
+        action: insert
+
+exporters:
+  # Traces → Tempo
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+
+  # Metrics → Prometheus (pull-based scrape endpoint)
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+    namespace: otel
+    enable_open_metrics: true
+
+  # Logs → Loki
+  loki:
+    endpoint: http://loki:3100/loki/api/v1/push
+    default_labels_enabled:
+      exporter: false
+      job:      true
+
+  # Debug (stdout) — shows what flows through the pipeline
+  debug:
+    verbosity: basic
+
+extensions:
+  # In-memory health check
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+  # Debug UI — navigate to http://localhost:55679
+  zpages:
+    endpoint: 0.0.0.0:55679
+
+service:
+  extensions: [health_check, zpages]
+
+  pipelines:
+    traces:
+      receivers:  [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters:  [otlp/tempo, debug]
+
+    metrics:
+      receivers:  [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters:  [prometheus]
+
+    logs:
+      receivers:  [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters:  [loki]

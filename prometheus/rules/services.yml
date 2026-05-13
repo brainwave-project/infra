@@ -1,0 +1,121 @@
+# =============================================================================
+# Prometheus alert rules — Brainwave service health
+# =============================================================================
+groups:
+
+  # ── Uptime ───────────────────────────────────────────────────────────────
+  - name: uptime
+    interval: 15s
+    rules:
+
+      - alert: ServiceDown
+        expr:  up == 0
+        for:   1m
+        labels:
+          severity: critical
+        annotations:
+          summary:     "{{ $labels.job }} is unreachable"
+          description: "Prometheus has been unable to scrape {{ $labels.job }} for more than 1 minute."
+
+      - alert: ServiceRestarting
+        expr: |
+          changes(process_start_time_seconds[10m]) > 2
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary:     "{{ $labels.job }} is restarting frequently"
+          description: "{{ $labels.job }} has restarted more than twice in the last 10 minutes (crash-loop suspected)."
+
+  # ── HTTP RED metrics ──────────────────────────────────────────────────────
+  - name: http-red
+    interval: 15s
+    rules:
+
+      - alert: HighErrorRate
+        expr: |
+          (
+            sum(rate(authhub_http_requests_total{status=~"5.."}[5m])) by (job)
+            or
+            sum(rate(userhub_http_requests_total{status=~"5.."}[5m])) by (job)
+            or
+            sum(rate(knowhub_http_requests_total{status=~"5.."}[5m])) by (job)
+          )
+          /
+          (
+            sum(rate(authhub_http_requests_total[5m])) by (job)
+            or
+            sum(rate(userhub_http_requests_total[5m])) by (job)
+            or
+            sum(rate(knowhub_http_requests_total[5m])) by (job)
+          )
+          > 0.05
+        for:  5m
+        labels:
+          severity: warning
+        annotations:
+          summary:     "High HTTP 5xx rate on {{ $labels.job }}"
+          description: "More than 5% of requests to {{ $labels.job }} are returning 5xx errors over the last 5 minutes."
+
+      - alert: HighP95Latency
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(authhub_http_request_duration_seconds_bucket[5m])) by (le, job)
+            or
+            sum(rate(userhub_http_request_duration_seconds_bucket[5m])) by (le, job)
+            or
+            sum(rate(knowhub_http_request_duration_seconds_bucket[5m])) by (le, job)
+          ) > 2.0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary:     "P95 latency above 2 s on {{ $labels.job }}"
+          description: "The 95th-percentile response time for {{ $labels.job }} has exceeded 2 seconds for 5 minutes."
+
+  # ── Infrastructure ────────────────────────────────────────────────────────
+  - name: infrastructure
+    interval: 30s
+    rules:
+
+      - alert: HighContainerCPU
+        expr: |
+          rate(container_cpu_usage_seconds_total{
+            name=~"brainwave-.*",
+            image!=""
+          }[5m]) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary:     "Container {{ $labels.name }} CPU > 80%"
+          description: "Container {{ $labels.name }} has been using more than 80% CPU for 5 minutes."
+
+      - alert: HighContainerMemory
+        expr: |
+          container_memory_usage_bytes{name=~"brainwave-.*", image!=""}
+          / container_spec_memory_limit_bytes{name=~"brainwave-.*", image!=""} > 0.85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary:     "Container {{ $labels.name }} memory > 85% of limit"
+          description: "Container {{ $labels.name }} is consuming more than 85% of its memory limit."
+
+      - alert: PostgresDown
+        expr:  pg_up == 0
+        for:   1m
+        labels:
+          severity: critical
+        annotations:
+          summary:     "PostgreSQL is unreachable"
+          description: "postgres-exporter cannot connect to PostgreSQL."
+
+      - alert: MongoDBDown
+        expr:  mongodb_up == 0
+        for:   1m
+        labels:
+          severity: critical
+        annotations:
+          summary:     "MongoDB is unreachable"
+          description: "mongodb-exporter cannot connect to MongoDB."

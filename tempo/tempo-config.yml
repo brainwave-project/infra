@@ -1,0 +1,61 @@
+# =============================================================================
+# Tempo — distributed tracing backend (single-binary, dev mode)
+# =============================================================================
+# Receivers: OTLP gRPC (4317) + HTTP (4318)
+# Storage:   local filesystem (ephemeral — fine for dev)
+# Retention: 1h (short for dev; set 168h in prod)
+# Port:      3200 (HTTP query / API)
+# =============================================================================
+
+stream_over_http_enabled: true
+
+server:
+  http_listen_port: 3200
+  log_level:        warn
+
+# Receive traces from OTel Collector via OTLP
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+
+# Flush blocks quickly in dev
+ingester:
+  max_block_duration: 5m
+
+compactor:
+  compaction:
+    block_retention: 1h        # short for dev; 7d+ in prod
+
+# Generate RED metrics from spans → shipped to Prometheus via remote_write
+metrics_generator:
+  registry:
+    external_labels:
+      source:  tempo
+      cluster: brainwave-dev
+  storage:
+    path: /tmp/tempo/generator/wal
+    remote_write:
+      - url:            http://prometheus:9090/api/v1/write
+        send_exemplars: true
+
+storage:
+  trace:
+    backend: local
+    wal:
+      path: /tmp/tempo/wal
+    local:
+      path: /tmp/tempo/blocks
+
+# Enable RED metric generation from spans
+overrides:
+  defaults:
+    metrics_generator:
+      processors:
+        - service-graphs
+        - span-metrics
+      generate_native_histograms: both

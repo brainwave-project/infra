@@ -1,0 +1,288 @@
+# =============================================================================
+# Observability stack — applied on top of compose.yml (+ dev/staging/prod)
+# =============================================================================
+# Three pillars:  Metrics · Logs · Traces
+# Admin UIs:      Konga (Kong)
+#
+# Metrics pipeline:
+#   Services / Exporters → Prometheus → Grafana
+#   Tempo span-metrics   → Prometheus (remote_write)
+#
+# Logs pipeline:
+#   Promtail (Docker socket) → Loki → Grafana
+#
+# Traces pipeline:
+#   Services → OTel Collector (OTLP) → Tempo → Grafana
+#
+# Alerting:
+#   Prometheus → Alertmanager
+#
+# Ports (host):
+#   3030  Grafana          http://localhost:3030   (admin/admin)
+#   9090  Prometheus       http://localhost:9090
+#   9093  Alertmanager     http://localhost:9093
+#   3100  Loki             http://localhost:3100
+#   3200  Tempo            http://localhost:3200
+#   4317  OTel gRPC        (services → collector)
+#   4318  OTel HTTP        (services → collector)
+#   55679 OTel zPages      http://localhost:55679
+#   9100  Node Exporter    http://localhost:9100/metrics
+#   8181  cAdvisor         http://localhost:8181
+#   9187  postgres-exp     http://localhost:9187/metrics
+#   9216  mongodb-exp      http://localhost:9216/metrics
+#   1337  Konga            http://localhost:1337
+#
+# Usage:
+#   make dev          (infra only — no app services)
+#   make dev-services (infra + app services)
+# =============================================================================
+
+services:
+
+  # ===========================================================================
+  # METRICS — Prometheus + exporters + Alertmanager
+  # ===========================================================================
+
+  prometheus:
+    image: prom/prometheus:v2.55.0
+    container_name: brainwave-prometheus
+    restart: on-failure:3
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
+      - '--web.enable-remote-write-receiver'   # accepts pushes from Tempo metrics-generator
+    volumes:
+      - ../prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    depends_on:
+      alertmanager:
+        condition: service_started
+    networks:
+      - brainwave
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: brainwave-alertmanager
+    restart: on-failure:3
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+    volumes:
+      - ../alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/alertmanager
+    ports:
+      - "9093:9093"
+    networks:
+      - brainwave
+
+  # ── Host metrics ─────────────────────────────────────────────────────────
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    container_name: brainwave-node-exporter
+    restart: on-failure:3
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    ports:
+      - "9100:9100"
+    networks:
+      - brainwave
+
+  # ── Container metrics ─────────────────────────────────────────────────────
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: brainwave-cadvisor
+    restart: on-failure:3
+    privileged: true
+    devices:
+      - /dev/kmsg:/dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+    ports:
+      - "8181:8080"    # host 8181 → container 8080 (avoids clash with Keycloak)
+    networks:
+      - brainwave
+
+  # ── PostgreSQL exporter ───────────────────────────────────────────────────
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.16.0
+    container_name: brainwave-postgres-exporter
+    restart: on-failure:3
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable"
+    ports:
+      - "9187:9187"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - brainwave
+
+  # ── MongoDB exporter ──────────────────────────────────────────────────────
+  mongodb-exporter:
+    image: percona/mongodb_exporter:0.43
+    container_name: brainwave-mongodb-exporter
+    restart: on-failure:3
+    command:
+      - '--mongodb.uri=mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongodb:27017/admin?authSource=admin'
+      - '--collect-all'
+    ports:
+      - "9216:9216"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - brainwave
+
+  # ===========================================================================
+  # LOGS — Loki + Promtail
+  # ===========================================================================
+
+  loki:
+    image: grafana/loki:3.2.0
+    container_name: brainwave-loki
+    restart: on-failure:3
+    command: -config.file=/etc/loki/loki-config.yml
+    volumes:
+      - ../loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki-data:/tmp/loki
+    ports:
+      - "3100:3100"
+    networks:
+      - brainwave
+
+  promtail:
+    image: grafana/promtail:3.2.0
+    container_name: brainwave-promtail
+    restart: on-failure:3
+    command: -config.file=/etc/promtail/promtail-config.yml
+    volumes:
+      - ../promtail/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    depends_on:
+      loki:
+        condition: service_started
+    networks:
+      - brainwave
+
+  # ===========================================================================
+  # TRACES — OTel Collector + Tempo
+  # ===========================================================================
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.112.0
+    container_name: brainwave-otel-collector
+    restart: on-failure:3
+    command: ["--config=/etc/otel-collector/otel-collector.yml"]
+    volumes:
+      - ../otel-collector/otel-collector.yml:/etc/otel-collector/otel-collector.yml:ro
+    ports:
+      - "4317:4317"    # OTLP/gRPC   (services → collector)
+      - "4318:4318"    # OTLP/HTTP   (services → collector)
+      - "8888:8888"    # Collector internal metrics (scraped by Prometheus)
+      - "8889:8889"    # Prometheus exporter (app OTLP metrics pipeline)
+      - "55679:55679"  # zPages debug UI → http://localhost:55679
+    depends_on:
+      tempo:
+        condition: service_started
+      loki:
+        condition: service_started
+    networks:
+      - brainwave
+
+  tempo:
+    image: grafana/tempo:2.6.0
+    container_name: brainwave-tempo
+    restart: on-failure:3
+    command: ["-config.file=/etc/tempo/tempo-config.yml"]
+    volumes:
+      - ../tempo/tempo-config.yml:/etc/tempo/tempo-config.yml:ro
+      - tempo-data:/tmp/tempo
+    ports:
+      - "3200:3200"    # Tempo HTTP API (Grafana datasource)
+    depends_on:
+      prometheus:
+        condition: service_started
+    networks:
+      - brainwave
+
+  # ===========================================================================
+  # VISUALIZATION — Grafana
+  # ===========================================================================
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    container_name: brainwave-grafana
+    restart: on-failure:3
+    environment:
+      GF_SECURITY_ADMIN_USER:         admin
+      GF_SECURITY_ADMIN_PASSWORD:     admin
+      GF_USERS_ALLOW_SIGN_UP:         "false"
+      GF_AUTH_ANONYMOUS_ENABLED:      "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE:     Viewer
+      GF_FEATURE_TOGGLES_ENABLE:      traceqlEditor traceToMetrics
+    volumes:
+      - ../grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3030:3000"
+    depends_on:
+      prometheus:
+        condition: service_started
+      loki:
+        condition: service_started
+      tempo:
+        condition: service_started
+    networks:
+      - brainwave
+
+  # ===========================================================================
+  # ADMIN UI — Konga (Kong management)
+  # ===========================================================================
+
+  konga:
+    image: pantsel/konga:0.14.9
+    container_name: brainwave-konga
+    restart: on-failure:3
+    environment:
+      DB_ADAPTER:         sqlite
+      NODE_ENV:           production
+      KONGA_HOOK_TIMEOUT: "120000"
+    volumes:
+      - konga-data:/app/kongadata
+    ports:
+      - "1337:1337"
+    depends_on:
+      kong:
+        condition: service_started
+    networks:
+      - brainwave
+
+volumes:
+  prometheus-data:
+    name: brainwave-prometheus-data
+  alertmanager-data:
+    name: brainwave-alertmanager-data
+  loki-data:
+    name: brainwave-loki-data
+  tempo-data:
+    name: brainwave-tempo-data
+  grafana-data:
+    name: brainwave-grafana-data
+  konga-data:
+    name: brainwave-konga-data

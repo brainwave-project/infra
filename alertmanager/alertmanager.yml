@@ -1,0 +1,52 @@
+# =============================================================================
+# Alertmanager — alert routing and notification (dev config)
+# =============================================================================
+# Dev: all alerts are silently logged (receiver: dev-blackhole).
+# Prod: swap in a real receiver (Slack, PagerDuty, etc.)
+#
+# Deduplication: alerts with the same {alertname, service} are grouped
+# and a single notification fires. Repeat notifications every 12 hours.
+# =============================================================================
+
+global:
+  resolve_timeout: 5m
+
+# Default route — everything lands here in dev
+route:
+  group_by:        ['alertname', 'service', 'severity']
+  group_wait:      10s          # wait to batch closely-fired alerts
+  group_interval:  5m           # wait before re-sending a grouped alert
+  repeat_interval: 12h          # re-notify if still firing after 12h
+  receiver:        dev-blackhole
+
+  # Example child route for critical SLO alerts (wire up PagerDuty here in prod)
+  routes:
+    - match:
+        severity: critical
+      receiver: dev-blackhole   # → replace with 'pagerduty' in prod
+      continue: false
+
+receivers:
+  # Dev sink — logs the alert payload but sends no external notification
+  - name: dev-blackhole
+
+  # ── Uncomment and fill in for production ────────────────────────────────
+  # - name: slack
+  #   slack_configs:
+  #     - api_url: 'https://hooks.slack.com/services/XXX/YYY/ZZZ'
+  #       channel: '#alerts'
+  #       title:   '{{ .GroupLabels.alertname }}'
+  #       text:    '{{ range .Alerts }}{{ .Annotations.summary }}\n{{ end }}'
+
+  # - name: pagerduty
+  #   pagerduty_configs:
+  #     - routing_key: '<integration-key>'
+  #       description: '{{ .GroupLabels.alertname }}: {{ .CommonAnnotations.summary }}'
+
+inhibit_rules:
+  # Suppress warnings when the same alert fires at critical level
+  - source_match:
+      severity: critical
+    target_match:
+      severity: warning
+    equal: ['alertname', 'service']

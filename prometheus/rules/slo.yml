@@ -1,0 +1,125 @@
+# =============================================================================
+# Prometheus SLO rules — multi-burn-rate alerting (99.9% availability target)
+# =============================================================================
+# Error budget: 0.1% over a 30-day window (43.2 minutes / month).
+#
+# Two windows / two burns:
+#   Fast burn:  1h  window, 14.4× budget burn rate → ~1h to exhaust budget
+#   Slow burn:  6h  window,   6× budget burn rate  → ~5d to exhaust budget
+#
+# SLO_TARGET = 0.999  →  error_budget = 1 - 0.999 = 0.001
+# =============================================================================
+
+groups:
+
+  # ── Recording rules: short windows ───────────────────────────────────────
+  - name: slo-recordings
+    interval: 30s
+    rules:
+
+      # auth-hub — 5m error ratio
+      - record: job:authhub_http_error_ratio:rate5m
+        expr: |
+          sum(rate(authhub_http_requests_total{status=~"5.."}[5m]))
+          /
+          sum(rate(authhub_http_requests_total[5m]))
+
+      # auth-hub — 1h error ratio
+      - record: job:authhub_http_error_ratio:rate1h
+        expr: |
+          sum(rate(authhub_http_requests_total{status=~"5.."}[1h]))
+          /
+          sum(rate(authhub_http_requests_total[1h]))
+
+      # auth-hub — 6h error ratio
+      - record: job:authhub_http_error_ratio:rate6h
+        expr: |
+          sum(rate(authhub_http_requests_total{status=~"5.."}[6h]))
+          /
+          sum(rate(authhub_http_requests_total[6h]))
+
+      # know-hub — 5m error ratio
+      - record: job:knowhub_http_error_ratio:rate5m
+        expr: |
+          sum(rate(knowhub_http_requests_total{status=~"5.."}[5m]))
+          /
+          sum(rate(knowhub_http_requests_total[5m]))
+
+      # know-hub — 1h error ratio
+      - record: job:knowhub_http_error_ratio:rate1h
+        expr: |
+          sum(rate(knowhub_http_requests_total{status=~"5.."}[1h]))
+          /
+          sum(rate(knowhub_http_requests_total[1h]))
+
+      # know-hub — 6h error ratio
+      - record: job:knowhub_http_error_ratio:rate6h
+        expr: |
+          sum(rate(knowhub_http_requests_total{status=~"5.."}[6h]))
+          /
+          sum(rate(knowhub_http_requests_total[6h]))
+
+  # ── SLO alerts ────────────────────────────────────────────────────────────
+  - name: slo-alerts
+    interval: 30s
+    rules:
+
+      # ── auth-hub ──────────────────────────────────────────────────────────
+
+      - alert: AuthHub_SLO_FastBurn
+        # 1h window burning at 14.4× → exhaust monthly budget in ~1 hour
+        expr: job:authhub_http_error_ratio:rate1h > (14.4 * 0.001)
+        for:  2m
+        labels:
+          severity: critical
+          service:  auth-hub
+          slo:      availability
+        annotations:
+          summary:     "auth-hub fast burn: error budget depleting in ~1 hour"
+          description: |
+            auth-hub is burning through its 30-day error budget 14.4× faster than sustainable.
+            Current 1h error ratio: {{ $value | humanizePercentage }}.
+            Action required immediately.
+
+      - alert: AuthHub_SLO_SlowBurn
+        # 6h window burning at 6× → exhaust monthly budget in ~5 days
+        expr: job:authhub_http_error_ratio:rate6h > (6 * 0.001)
+        for:  15m
+        labels:
+          severity: warning
+          service:  auth-hub
+          slo:      availability
+        annotations:
+          summary:     "auth-hub slow burn: error budget degrading"
+          description: |
+            auth-hub 6h error ratio is above 6× the sustainable burn rate.
+            Current 6h error ratio: {{ $value | humanizePercentage }}.
+            Investigate within the next few hours.
+
+      # ── know-hub ──────────────────────────────────────────────────────────
+
+      - alert: KnowHub_SLO_FastBurn
+        expr: job:knowhub_http_error_ratio:rate1h > (14.4 * 0.001)
+        for:  2m
+        labels:
+          severity: critical
+          service:  know-hub
+          slo:      availability
+        annotations:
+          summary:     "know-hub fast burn: error budget depleting in ~1 hour"
+          description: |
+            know-hub is burning through its 30-day error budget 14.4× faster than sustainable.
+            Current 1h error ratio: {{ $value | humanizePercentage }}.
+
+      - alert: KnowHub_SLO_SlowBurn
+        expr: job:knowhub_http_error_ratio:rate6h > (6 * 0.001)
+        for:  15m
+        labels:
+          severity: warning
+          service:  know-hub
+          slo:      availability
+        annotations:
+          summary:     "know-hub slow burn: error budget degrading"
+          description: |
+            know-hub 6h error ratio is above 6× the sustainable burn rate.
+            Current 6h error ratio: {{ $value | humanizePercentage }}.

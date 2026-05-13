@@ -2,29 +2,31 @@
 # Brainwave Infrastructure — Makefile
 # =============================================================================
 # Shortcuts for multi-file Docker Compose commands.
-# Always run from the infra/ repo root.
+# Always run from the infra/ directory.
 #
-#   make dev            Start local dev stack (infra only)
-#   make dev-services   Start local dev stack + app services
-#   make staging        Start staging stack (infra only)
-#   make prod           Start prod stack (infra only)
-#   make down           Stop current environment (preserves volumes)
-#   make reset          Stop + destroy all volumes (clean slate)
-#   make ps             Show running service status
-#   make logs           Tail all logs
-#   make logs s=kong    Tail a specific service
+#   make dev              Start local dev stack (infra + observability, no app services)
+#   make dev-services     Start local dev stack + all app services
+#   make dev-down         Stop dev stack
+#   make staging          Start staging stack
+#   make prod             Start prod stack
+#   make down             Stop current environment (preserves volumes)
+#   make reset            Stop + destroy all volumes (clean slate)
+#   make ps               Show running service status
+#   make logs             Tail all logs
+#   make logs s=kong      Tail a specific service
+#   make urls             Print all management UI URLs
 # =============================================================================
 
 # Base compose files
-BASE   := docker/compose.yml
-MON    := docker/compose.monitoring.yml
+BASE := docker/compose.yml
+OBS  := docker/compose.observability.yml   # full observability stack (metrics+logs+traces)
 
-DEV_F  := -f $(BASE) -f docker/compose.dev.yml      -f $(MON) --env-file env/.env.dev
-STG_F  := -f $(BASE) -f docker/compose.staging.yml  -f $(MON) --env-file env/.env.staging
-PRD_F  := -f $(BASE) -f docker/compose.prod.yml     -f $(MON) --env-file env/.env.prod
+DEV_F  := -f $(BASE) -f docker/compose.dev.yml     -f $(OBS) --env-file env/.env.dev
+STG_F  := -f $(BASE) -f docker/compose.staging.yml -f $(OBS) --env-file env/.env.staging
+PRD_F  := -f $(BASE) -f docker/compose.prod.yml    -f $(OBS) --env-file env/.env.prod
 
 .PHONY: dev dev-services dev-down staging staging-services prod prod-services \
-        down reset ps logs lint urls monitoring
+        down reset ps logs urls lint
 
 # ---------------------------------------------------------------------------
 # Dev
@@ -72,7 +74,7 @@ ps:
 	docker compose $(DEV_F) ps
 
 # Usage: make logs          → all services
-#        make logs s=kong   → single service
+#        make logs s=loki   → single service
 logs:
 ifdef s
 	docker compose $(DEV_F) logs -f $(s)
@@ -81,28 +83,38 @@ else
 endif
 
 # ---------------------------------------------------------------------------
-# Quick reference: management UIs
+# Quick reference: all management UIs
 # ---------------------------------------------------------------------------
 urls:
 	@echo ""
-	@echo "  Application:"
-	@echo "    UI ........................ http://localhost:5173"
-	@echo "    Kong (API gateway) ........ http://localhost:8000"
+	@echo "  ┌─ Application ──────────────────────────────────────────────────────┐"
+	@echo "  │  UI (Vite dev)        http://localhost:5173                         │"
+	@echo "  │  Kong (API gateway)   http://localhost:8000                         │"
+	@echo "  └────────────────────────────────────────────────────────────────────┘"
 	@echo ""
-	@echo "  Service Swagger:"
-	@echo "    auth-hub .................. http://localhost:3000/api/docs"
-	@echo "    user-hub .................. http://localhost:3001/api/docs"
-	@echo "    know-hub .................. http://localhost:3002/api/docs"
+	@echo "  ┌─ Service Swagger ──────────────────────────────────────────────────┐"
+	@echo "  │  auth-hub             http://localhost:3000/api/docs                │"
+	@echo "  │  user-hub             http://localhost:3001/api/docs                │"
+	@echo "  │  know-hub             http://localhost:3002/api/docs                │"
+	@echo "  └────────────────────────────────────────────────────────────────────┘"
 	@echo ""
-	@echo "  Admin UIs:"
-	@echo "    Keycloak Admin ............ http://localhost:8080/admin   (admin / admin_dev_pass)"
-	@echo "    Kong Admin API ............ http://localhost:8001"
-	@echo "    Konga (Kong UI) ........... http://localhost:1337"
-	@echo "    MinIO Console ............. http://localhost:9001         (minio-admin / minio_dev_pass_8chars)"
+	@echo "  ┌─ Observability (Three Pillars) ────────────────────────────────────┐"
+	@echo "  │  Grafana (dashboards) http://localhost:3030         (admin/admin)   │"
+	@echo "  │  Prometheus (metrics) http://localhost:9090                         │"
+	@echo "  │  Alertmanager         http://localhost:9093                         │"
+	@echo "  │  Loki (logs)          http://localhost:3100                         │"
+	@echo "  │  Tempo (traces)       http://localhost:3200                         │"
+	@echo "  │  OTel zPages          http://localhost:55679                        │"
+	@echo "  │  cAdvisor (ctrs)      http://localhost:8181                         │"
+	@echo "  │  Node Exporter        http://localhost:9100/metrics                 │"
+	@echo "  └────────────────────────────────────────────────────────────────────┘"
 	@echo ""
-	@echo "  Monitoring:"
-	@echo "    Prometheus ................ http://localhost:9090"
-	@echo "    Grafana ................... http://localhost:3030         (admin / admin)"
+	@echo "  ┌─ Admin UIs ────────────────────────────────────────────────────────┐"
+	@echo "  │  Keycloak Admin       http://localhost:8080/admin   (admin/...)     │"
+	@echo "  │  Kong Admin API       http://localhost:8001                         │"
+	@echo "  │  Konga (Kong UI)      http://localhost:1337                         │"
+	@echo "  │  MinIO Console        http://localhost:9001         (minio-admin/…) │"
+	@echo "  └────────────────────────────────────────────────────────────────────┘"
 	@echo ""
 
 # ---------------------------------------------------------------------------
