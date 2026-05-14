@@ -48,6 +48,11 @@ services:
     ports:
       - "8080:8080"   # Admin: http://localhost:8080/admin
 
+  kafka:
+    restart: on-failure:3
+    ports:
+      - "29092:29092"   # External listener — host access (kafkajs, kafka-cli, etc.)
+
   kong:
     restart: on-failure:3
     environment:
@@ -55,6 +60,15 @@ services:
       KONG_LOG_LEVEL:       info
       KONG_DNS_TTL:         10             # Re-resolve service hostnames every 10s
       KONG_DNS_STALE_TTL:   5             # Use stale entry for max 5s while re-resolving
+    # Dev-only: when running app services on the host (npm run dev) instead of in
+    # compose, point Kong's upstream hostnames at the host gateway so it can reach
+    # them via the host-exposed ports. Harmless when services run in containers —
+    # docker DNS resolves the in-network names first.
+    extra_hosts:
+      - "auth-hub:host-gateway"
+      - "user-hub:host-gateway"
+      - "know-hub:host-gateway"
+      - "audit-hub:host-gateway"
     ports:
       - "8000:8000"   # Proxy â€” all client traffic here
       - "8001:8001"   # Admin API â€” local debug only, NEVER expose in prod
