@@ -136,6 +136,7 @@ services:
       MINIO_USE_SSL:    "false"
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      KAFKA_BROKERS:    ${KAFKA_BROKERS:-kafka:9092}
     ports:
       - "${KNOW_HUB_PORT:-3002}:3002"
     depends_on:
@@ -149,6 +150,34 @@ services:
       - brainwave
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  audit-hub:
+    profiles: [services]
+    image: ${GHCR_REGISTRY:-ghcr.io}/${GHCR_OWNER}/brainwave-audit-hub:${GHCR_TAG:-latest}
+    container_name: brainwave-audit-hub
+    restart: on-failure:3
+    environment:
+      PORT:           ${AUDIT_HUB_PORT:-3003}
+      NODE_ENV:       production
+      SERVICE_NAME:   audit-hub
+      LOG_LEVEL:      info
+      DATABASE_URL:   "postgresql://audithub_app:${AUDITHUB_DB_PASS}@postgres:5432/${POSTGRES_DB}?schema=audit"
+      KAFKA_BROKERS:  ${KAFKA_BROKERS:-kafka:9092}
+      KAFKA_GROUP_ID: brainwave.audit-hub
+    ports:
+      - "${AUDIT_HUB_PORT:-3003}:3003"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - brainwave
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3003/health/live"]
       interval: 10s
       timeout: 5s
       retries: 3
