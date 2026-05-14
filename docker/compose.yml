@@ -124,6 +124,67 @@ services:
       - brainwave
 
   # ---------------------------------------------------------------------------
+  # Kafka — Event streaming backbone (KRaft mode, no ZooKeeper)
+  # Topics are created by kafka-init on first boot.
+  # Internal listener:  kafka:9092  (service-to-service)
+  # External listener:  localhost:29092  (host access, e.g. kafka-ui or CLI tools)
+  # Controller listener: kafka:9093 (KRaft internal)
+  # ---------------------------------------------------------------------------
+  kafka:
+    image: apache/kafka:latest
+    container_name: brainwave-kafka
+    environment:
+      # KRaft — no ZooKeeper
+      KAFKA_NODE_ID:                        1
+      KAFKA_PROCESS_ROLES:                  broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS:       1@kafka:9093
+
+      # Listeners
+      KAFKA_LISTENERS:                      PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:29092
+      KAFKA_ADVERTISED_LISTENERS:           PLAINTEXT://kafka:9092,EXTERNAL://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES:      CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME:     PLAINTEXT
+
+      # Sensible defaults for a single-broker dev cluster
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE:      "false"   # Topics created explicitly by kafka-init
+      KAFKA_LOG_RETENTION_HOURS:            168       # 7 days
+      KAFKA_LOG_SEGMENT_BYTES:              104857600 # 100 MB segments
+      KAFKA_NUM_PARTITIONS:                 3
+      KAFKA_DEFAULT_REPLICATION_FACTOR:     1         # Single broker in dev
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR:  1
+      CLUSTER_ID:                           MkU3OEVBNTcwNTJENDM2Qk5T   # Fixed dev cluster ID
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list > /dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    networks:
+      - brainwave
+
+  # ---------------------------------------------------------------------------
+  # Kafka Init — Creates all platform topics (one-shot)
+  # Standard topic naming: brainwave.<domain>.events
+  # ---------------------------------------------------------------------------
+  kafka-init:
+    image: apache/kafka:latest
+    container_name: brainwave-kafka-init
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "/init-topics.sh"]
+    volumes:
+      - ../kafka/init-topics.sh:/init-topics.sh:ro
+    networks:
+      - brainwave
+    restart: "no"
+
+  # ---------------------------------------------------------------------------
   # Kong — DB-less API Gateway
   # Admin listen and log level are set in environment overrides
   # ---------------------------------------------------------------------------
@@ -161,6 +222,8 @@ volumes:
     name: brainwave-minio-data
   keycloak-data:
     name: brainwave-keycloak-data
+  kafka-data:
+    name: brainwave-kafka-data
 
 # =============================================================================
 # Networks

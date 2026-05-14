@@ -52,6 +52,13 @@ scrape_configs:
         labels:
           service: know-hub
 
+  - job_name: audit-hub
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['audit-hub:3003']
+        labels:
+          service: audit-hub
+
   # ── API Gateway ──────────────────────────────────────────────────────────
   - job_name: kong
     metrics_path: /metrics

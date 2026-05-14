@@ -87,6 +87,7 @@ services:
       KEYCLOAK_CLIENT_ID:         auth-hub-service
       KEYCLOAK_CLIENT_SECRET:     ${KEYCLOAK_AUTH_HUB_SECRET}
       KEYCLOAK_REDIRECT_BASE_URL: http://localhost:8000
+      KAFKA_BROKERS:              ${KAFKA_BROKERS:-kafka:9092}
     ports:
       - "${AUTH_HUB_PORT:-3000}:3000"
       - "${AUTH_HUB_GRPC_PORT:-50051}:50051"
@@ -119,6 +120,7 @@ services:
       KEYCLOAK_BASE_URL:       http://keycloak:8080
       KEYCLOAK_ADMIN_USER:     ${KEYCLOAK_ADMIN_USER}
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      KAFKA_BROKERS:           ${KAFKA_BROKERS:-kafka:9092}
     ports:
       - "${USER_HUB_PORT:-3001}:3001"
     volumes:
@@ -151,6 +153,7 @@ services:
       MINIO_USE_SSL:    "false"
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      KAFKA_BROKERS:    ${KAFKA_BROKERS:-kafka:9092}
     ports:
       - "${KNOW_HUB_PORT:-3002}:3002"
     volumes:
@@ -166,6 +169,34 @@ services:
     networks:
       - brainwave
 
+  audit-hub:
+    profiles: [services]
+    image: node:20-alpine
+    container_name: brainwave-audit-hub
+    working_dir: /workspace/audit-hub
+    restart: on-failure:3
+    command: sh -c "apk add --no-cache openssl && npm install && npx prisma generate && npx prisma db push --skip-generate && npx tsx src/index.ts"
+    environment:
+      PORT:         ${AUDIT_HUB_PORT:-3003}
+      NODE_ENV:     development
+      SERVICE_NAME: audit-hub
+      LOG_LEVEL:    debug
+      DATABASE_URL: "postgresql://audithub_app:${AUDITHUB_DB_PASS}@postgres:5432/${POSTGRES_DB}?schema=audit"
+      KAFKA_BROKERS: ${KAFKA_BROKERS:-kafka:9092}
+      KAFKA_GROUP_ID: brainwave.audit-hub
+    ports:
+      - "${AUDIT_HUB_PORT:-3003}:3003"
+    volumes:
+      - ../../:/workspace
+      - audit-hub-node-modules:/workspace/audit-hub/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - brainwave
+
 volumes:
   auth-hub-node-modules:
     name: brainwave-auth-hub-node-modules
@@ -173,4 +204,6 @@ volumes:
     name: brainwave-user-hub-node-modules
   know-hub-node-modules:
     name: brainwave-know-hub-node-modules
+  audit-hub-node-modules:
+    name: brainwave-audit-hub-node-modules
 

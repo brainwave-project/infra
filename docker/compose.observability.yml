@@ -252,6 +252,26 @@ services:
       - brainwave
 
   # ===========================================================================
+  # KAFKA UI — Event stream browser → http://localhost:9080
+  # ===========================================================================
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: brainwave-kafka-ui
+    restart: on-failure:3
+    environment:
+      KAFKA_CLUSTERS_0_NAME:             brainwave-dev
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      DYNAMIC_CONFIG_ENABLED:            "true"
+    ports:
+      - "9080:8080"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - brainwave
+
+  # ===========================================================================
   # ADMIN UI — Konga (Kong management)
   # ===========================================================================
 
