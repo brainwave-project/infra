@@ -1,3 +1,21 @@
+# [1.1.0](https://github.com/brainwave-project/infra/compare/v1.0.0...v1.1.0) (2026-05-15)
+
+
+### Bug Fixes
+
+* **ci:** anchor semantic-release with v1.0.0 tag + clean duplicated CHANGELOG ([abe0ff4](https://github.com/brainwave-project/infra/commit/abe0ff44014dc7d65270b33602cdf20eb3a82325))
+* **ci:** drop redundant `git fetch --tags --force` step in release workflow ([45eca19](https://github.com/brainwave-project/infra/commit/45eca19b9167e99422a51dd1add2c1a5e0d4f895))
+* **ci:** force-fetch tags before semantic-release to avoid orphan-tag conflicts ([76ede03](https://github.com/brainwave-project/infra/commit/76ede037d8dc2d1e15f4cda9dd2b976a33e42b05))
+* **ci:** kong lint + secrets scan ([4be9306](https://github.com/brainwave-project/infra/commit/4be930628e4c1c564fb8af32bc1e9e57426260c9))
+
+
+### Features
+
+* **infra:** add audit-hub to compose.prod.yml + .env.prod.example ([08a478f](https://github.com/brainwave-project/infra/commit/08a478f780cf79fcb46e47a6e78498124d9a4c8c))
+* **infra:** add Kafka infrastructure and audit-hub routing ([4e63662](https://github.com/brainwave-project/infra/commit/4e6366233246bb316e986253ec136652494a337e))
+* **infra:** expose Kafka 29092 + route Kong upstreams to host-gateway in dev ([9bdcae8](https://github.com/brainwave-project/infra/commit/9bdcae898e5ca18de30c5e624ca59dd67c633287))
+* **observability:** add full three-pillar observability stack ([f4b1d62](https://github.com/brainwave-project/infra/commit/f4b1d6253eec96242bc7d886011b7362d5833a78))
+
 # 1.0.0 (2026-05-10)
 
 
