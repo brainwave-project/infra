@@ -155,6 +155,10 @@ services:
     image: grafana/loki:3.2.0
     container_name: brainwave-loki
     restart: on-failure:3
+    # Same dev workaround as tempo: the image runs as a non-root user but the
+    # named volume mounts root-owned on first start, so `mkdir /tmp/loki/rules`
+    # fails. Run as root in dev — replace with a proper init-container in prod.
+    user: root
     command: -config.file=/etc/loki/loki-config.yml
     volumes:
       - ../loki/loki-config.yml:/etc/loki/loki-config.yml:ro
@@ -212,6 +216,11 @@ services:
     image: grafana/tempo:2.6.0
     container_name: brainwave-tempo
     restart: on-failure:3
+    # Tempo 2.6's image runs as uid 10001 by default, which can't write to a
+    # fresh named volume (root-owned on first mount). Running as root in dev
+    # sidesteps the chown dance. Use a proper init-container or pre-seeded
+    # volume permissions in prod.
+    user: root
     command: ["-config.file=/etc/tempo/tempo-config.yml"]
     volumes:
       - ../tempo/tempo-config.yml:/etc/tempo/tempo-config.yml:ro
