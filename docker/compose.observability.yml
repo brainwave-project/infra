@@ -25,7 +25,7 @@
 #   3200  Tempo            http://localhost:3200
 #   4317  OTel gRPC        (services → collector)
 #   4318  OTel HTTP        (services → collector)
-#   55679 OTel zPages      http://localhost:55679
+#   5679  OTel zPages      http://localhost:5679  (host→container 5679→55679)
 #   9100  Node Exporter    http://localhost:9100/metrics
 #   8181  cAdvisor         http://localhost:8181
 #   9187  postgres-exp     http://localhost:9187/metrics
@@ -195,7 +195,11 @@ services:
       - "4318:4318"    # OTLP/HTTP   (services → collector)
       - "8888:8888"    # Collector internal metrics (scraped by Prometheus)
       - "8889:8889"    # Prometheus exporter (app OTLP metrics pipeline)
-      - "55679:55679"  # zPages debug UI → http://localhost:55679
+      # Host port intentionally != container port: 55679 sits inside Windows's
+      # default Hyper-V excluded port range (55606–55705) and binding it fails
+      # with EACCES on those machines. The collector still listens on 55679
+      # internally — see otel-collector.yml zpages endpoint.
+      - "5679:55679"   # zPages debug UI → http://localhost:5679
     depends_on:
       tempo:
         condition: service_started

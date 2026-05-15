@@ -104,7 +104,7 @@ urls:
 	@echo "  │  Alertmanager         http://localhost:9093                         │"
 	@echo "  │  Loki (logs)          http://localhost:3100                         │"
 	@echo "  │  Tempo (traces)       http://localhost:3200                         │"
-	@echo "  │  OTel zPages          http://localhost:55679                        │"
+	@echo "  │  OTel zPages          http://localhost:5679                         │"
 	@echo "  │  cAdvisor (ctrs)      http://localhost:8181                         │"
 	@echo "  │  Node Exporter        http://localhost:9100/metrics                 │"
 	@echo "  └────────────────────────────────────────────────────────────────────┘"
