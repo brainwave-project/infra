@@ -17,11 +17,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          # fetch-depth: 0 already pulls the full history INCLUDING all tags,
+          # so there's no need (and no auth) for an extra `git fetch --tags`
+          # step after persist-credentials: false strips the token.
           fetch-depth: 0
           persist-credentials: false
-
-      - name: Fetch all tags
-        run: git fetch --tags --force
 
       - uses: actions/setup-node@v4
         with:
