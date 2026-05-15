@@ -28,9 +28,18 @@ jobs:
           node-version: 20
 
       - name: Install semantic-release
-        run: npm install --no-save semantic-release @semantic-release/changelog @semantic-release/git @semantic-release/github
+        run: |
+          npm install --no-save \
+            semantic-release@24 \
+            @semantic-release/changelog@6 \
+            @semantic-release/git@10 \
+            @semantic-release/github@10
 
       - name: Run semantic release
         env:
+          # @semantic-release/github reads GITHUB_TOKEN; @semantic-release/git
+          # reads GH_TOKEN to build the `https://x-access-token:${TOKEN}@…` push
+          # URL when persist-credentials is false. Export both to be safe.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN:     ${{ secrets.GITHUB_TOKEN }}
         run: npx semantic-release
