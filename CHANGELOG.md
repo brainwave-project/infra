@@ -1,3 +1,10 @@
+## [1.1.2](https://github.com/brainwave-project/infra/compare/v1.1.1...v1.1.2) (2026-05-15)
+
+
+### Bug Fixes
+
+* **observability:** unblock loki + tempo crash loops ([a4f4b3f](https://github.com/brainwave-project/infra/commit/a4f4b3f5fe309014b894bf3efc19f77181e9435e))
+
 ## [1.1.1](https://github.com/brainwave-project/infra/compare/v1.1.0...v1.1.1) (2026-05-15)
 
 
