@@ -1,3 +1,10 @@
+## [1.1.1](https://github.com/brainwave-project/infra/compare/v1.1.0...v1.1.1) (2026-05-15)
+
+
+### Bug Fixes
+
+* **otel:** remap zPages host port 55679 → 5679 to dodge Windows reservation ([a2bbca4](https://github.com/brainwave-project/infra/commit/a2bbca4ae0db02cfa3ea84593966c8d3d7fbe4c0))
+
 # [1.1.0](https://github.com/brainwave-project/infra/compare/v1.0.0...v1.1.0) (2026-05-15)
 
 
