@@ -58,18 +58,15 @@ services:
     image: ${GHCR_REGISTRY:-ghcr.io}/${GHCR_OWNER}/brainwave-auth-hub:${GHCR_TAG:-latest}
     container_name: brainwave-auth-hub
     restart: on-failure:3
+    # Literal config (NODE_ENV, KEYCLOAK_*) is in env/services/auth-hub.prod.env.
+    # environment: below only carries values that need ${...} interpolation.
+    env_file:
+      - ../env/services/auth-hub.prod.env
     environment:
       PORT:                       ${AUTH_HUB_PORT:-3000}
       GRPC_PORT:                  ${AUTH_HUB_GRPC_PORT:-50051}
-      NODE_ENV:                   production
-      SERVICE_NAME:               auth-hub
-      LOG_LEVEL:                  info
-      DB_HOST:                    postgres
       DB_USER:                    ${POSTGRES_USER}
       DB_PASS:                    ${POSTGRES_PASSWORD}
-      KEYCLOAK_BASE_URL:          http://keycloak:8080
-      KEYCLOAK_REALM:             brainwave
-      KEYCLOAK_CLIENT_ID:         auth-hub-service
       KEYCLOAK_CLIENT_SECRET:     ${KEYCLOAK_AUTH_HUB_SECRET}
       KEYCLOAK_REDIRECT_BASE_URL: ${AUTH_HUB_REDIRECT_URL:-http://localhost:8000}
     ports:
@@ -93,15 +90,11 @@ services:
     image: ${GHCR_REGISTRY:-ghcr.io}/${GHCR_OWNER}/brainwave-user-hub:${GHCR_TAG:-latest}
     container_name: brainwave-user-hub
     restart: on-failure:3
+    env_file:
+      - ../env/services/user-hub.prod.env
     environment:
       PORT:                    ${USER_HUB_PORT:-3001}
-      NODE_ENV:                production
-      SERVICE_NAME:            user-hub
-      LOG_LEVEL:               info
       DATABASE_URL:            "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}"
-      AUTH_HUB_GRPC_HOST:      auth-hub
-      AUTH_HUB_GRPC_PORT:      "50051"
-      KEYCLOAK_BASE_URL:       http://keycloak:8080
       KEYCLOAK_ADMIN_USER:     ${KEYCLOAK_ADMIN_USER}
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
     ports:
@@ -124,16 +117,12 @@ services:
     image: ${GHCR_REGISTRY:-ghcr.io}/${GHCR_OWNER}/brainwave-know-hub:${GHCR_TAG:-latest}
     container_name: brainwave-know-hub
     restart: on-failure:3
+    env_file:
+      - ../env/services/know-hub.prod.env
     environment:
       PORT:             ${KNOW_HUB_PORT:-3002}
-      NODE_ENV:         production
-      SERVICE_NAME:     know-hub
-      LOG_LEVEL:        info
       DATABASE_URL:     "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}"
       MONGO_URI:        "mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongodb:27017/${MONGO_DB}?authSource=admin"
-      MINIO_HOST:       minio
-      MINIO_PORT:       "9000"
-      MINIO_USE_SSL:    "false"
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
       KAFKA_BROKERS:    ${KAFKA_BROKERS:-kafka:9092}
@@ -159,14 +148,12 @@ services:
     image: ${GHCR_REGISTRY:-ghcr.io}/${GHCR_OWNER}/brainwave-audit-hub:${GHCR_TAG:-latest}
     container_name: brainwave-audit-hub
     restart: on-failure:3
+    env_file:
+      - ../env/services/audit-hub.prod.env
     environment:
-      PORT:           ${AUDIT_HUB_PORT:-3003}
-      NODE_ENV:       production
-      SERVICE_NAME:   audit-hub
-      LOG_LEVEL:      info
-      DATABASE_URL:   "postgresql://audithub_app:${AUDITHUB_DB_PASS}@postgres:5432/${POSTGRES_DB}?schema=audit"
-      KAFKA_BROKERS:  ${KAFKA_BROKERS:-kafka:9092}
-      KAFKA_GROUP_ID: brainwave.audit-hub
+      PORT:          ${AUDIT_HUB_PORT:-3003}
+      DATABASE_URL:  "postgresql://audithub_app:${AUDITHUB_DB_PASS}@postgres:5432/${POSTGRES_DB}?schema=audit"
+      KAFKA_BROKERS: ${KAFKA_BROKERS:-kafka:9092}
     ports:
       - "${AUDIT_HUB_PORT:-3003}:3003"
     depends_on:
