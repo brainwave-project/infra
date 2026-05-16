@@ -9,7 +9,8 @@
 #
 # Also exposes:
 #   8888 — collector's own internal metrics (scraped by Prometheus)
-#   55679 — zPages debug UI  → http://localhost:55679
+#   55679 — zPages debug UI  → http://localhost:5679/debug/servicez
+#           (host port 5679 → container 55679; root path 404s, use /debug/servicez)
 # =============================================================================
 
 receivers:
@@ -71,7 +72,8 @@ extensions:
   health_check:
     endpoint: 0.0.0.0:13133
 
-  # Debug UI — navigate to http://localhost:55679
+  # Debug UI — navigate to http://localhost:5679/debug/servicez
+  # (root path returns 404; servicez is the index that links to tracez/pipelinez)
   zpages:
     endpoint: 0.0.0.0:55679
 
