@@ -1,3 +1,12 @@
+# =============================================================================
+# Runs on every push to main. Validates the infra config first (via the shared
+# _validate.yml reusable workflow), then runs semantic-release to tag, generate
+# release notes, and update CHANGELOG.md.
+#
+# Single Actions row per push: a `validate` calling-job that nests the lint
+# checks, followed by the `release` job gated on it.
+# =============================================================================
+
 name: Release
 
 on:
@@ -10,9 +19,14 @@ permissions:
   pull-requests: write
 
 jobs:
+
+  validate:
+    uses: ./.github/workflows/_validate.yml
+
   release:
     name: Semantic Release
     runs-on: ubuntu-latest
+    needs: validate
 
     steps:
       - uses: actions/checkout@v4

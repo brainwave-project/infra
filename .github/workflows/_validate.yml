@@ -1,0 +1,119 @@
+# =============================================================================
+# Reusable validation workflow — invoked by validate.yml (on PRs) and
+# release.yml (on push to main, as a gate before semantic-release).
+#
+# Defines the validation jobs once so they don't drift between the two callers.
+# =============================================================================
+
+name: _validate
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+
+  # ---------------------------------------------------------------------------
+  # Validate Docker Compose syntax
+  # ---------------------------------------------------------------------------
+  compose-lint:
+    name: Lint Docker Compose
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare env file for variable resolution
+        run: cp env/.env.dev env/.env.staging.example env/.env.prod.example /tmp/
+
+      - name: Validate compose — dev
+        run: |
+          docker compose \
+            -f docker/compose.yml -f docker/compose.dev.yml \
+            --env-file env/.env.dev \
+            config --quiet
+
+      - name: Validate compose — staging (with placeholder env)
+        run: |
+          cp env/.env.staging.example env/.env.staging
+          # Substitute CHANGE_ME placeholders so compose can resolve vars
+          sed -i 's/CHANGE_ME[^=]*/placeholder/g' env/.env.staging
+          docker compose \
+            -f docker/compose.yml -f docker/compose.staging.yml \
+            --env-file env/.env.staging \
+            config --quiet
+
+      - name: Validate compose — prod (with placeholder env)
+        run: |
+          cp env/.env.prod.example env/.env.prod
+          sed -i 's/CHANGE_ME[^=]*/placeholder/g' env/.env.prod
+          docker compose \
+            -f docker/compose.yml -f docker/compose.prod.yml \
+            --env-file env/.env.prod \
+            config --quiet
+
+  # ---------------------------------------------------------------------------
+  # Validate Kong declarative config
+  # ---------------------------------------------------------------------------
+  kong-lint:
+    name: Lint Kong Config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate kong.yml with deck (Kong's official CLI)
+        uses: docker://kong/deck:latest
+        with:
+          args: file validate kong/kong.yml
+
+  # ---------------------------------------------------------------------------
+  # Validate PostgreSQL init scripts (syntax check via psql --single-transaction)
+  # ---------------------------------------------------------------------------
+  postgres-lint:
+    name: Lint PostgreSQL Init Scripts
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER:     brainwave
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB:       brainwave
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U brainwave"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run all init scripts in order
+        env:
+          PGPASSWORD: test
+        run: |
+          for f in $(ls postgres/init/*.sql | sort); do
+            echo "=== Running $f ==="
+            psql -h localhost -U brainwave -d brainwave -f "$f"
+          done
+
+  # ---------------------------------------------------------------------------
+  # Security: scan committed history for accidentally committed secrets
+  # Uses the gitleaks Docker image directly — the v2 action requires an
+  # enterprise license for org repos.
+  # ---------------------------------------------------------------------------
+  secrets-scan:
+    name: Secrets Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run gitleaks
+        run: |
+          docker run --rm -v "$(pwd):/path" zricethezav/gitleaks:latest \
+            git --no-banner --redact /path
