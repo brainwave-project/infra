@@ -1,3 +1,10 @@
+# [1.2.0](https://github.com/brainwave-project/infra/compare/v1.1.3...v1.2.0) (2026-05-16)
+
+
+### Features
+
+* **observability:** wire OTel auto-instrumentation into all dev service containers ([d7298f5](https://github.com/brainwave-project/infra/commit/d7298f5ae6d4c3b9418bcb07e09d4eff008cfd39))
+
 ## [1.1.3](https://github.com/brainwave-project/infra/compare/v1.1.2...v1.1.3) (2026-05-16)
 
 
