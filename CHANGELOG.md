@@ -1,3 +1,10 @@
+## [1.1.3](https://github.com/brainwave-project/infra/compare/v1.1.2...v1.1.3) (2026-05-16)
+
+
+### Bug Fixes
+
+* **audit-hub:** remove prisma db push from dev startup command ([1e3fcb2](https://github.com/brainwave-project/infra/commit/1e3fcb24d1a6b2cb2590bf20bca987aa6d078473))
+
 ## [1.1.2](https://github.com/brainwave-project/infra/compare/v1.1.1...v1.1.2) (2026-05-15)
 
 
