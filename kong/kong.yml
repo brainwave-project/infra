@@ -136,7 +136,7 @@ services:
           cookie_names:      []
           uri_param_names:   []
           run_on_preflight:  false
-      # Extract sub claim from validated JWT and forward as X-User-Id to upstream
+      # Extract sub → X-User-Id and realm_access.roles → X-User-Roles
       - name: post-function
         config:
           access:
@@ -158,6 +158,21 @@ services:
               local sub = json:match('"sub"%s*:%s*"([^"]+)"')
               if sub then
                 kong.service.request.set_header("X-User-Id", sub)
+              end
+              local realm_block = json:match('"realm_access"%s*:%s*(%b{})')
+              if realm_block then
+                local roles_inner = realm_block:match('"roles"%s*:%s*%[(.-)%]')
+                if roles_inner then
+                  local filtered = {}
+                  for role in roles_inner:gmatch('"([^"]+)"') do
+                    if role == "ADMIN" or role == "EDITOR" or role == "VIEWER" then
+                      table.insert(filtered, '"' .. role .. '"')
+                    end
+                  end
+                  if #filtered > 0 then
+                    kong.service.request.set_header("X-User-Roles", '[' .. table.concat(filtered, ',') .. ']')
+                  end
+                end
               end
       # Rate limit per consumer (after auth)
       - name: rate-limiting
@@ -190,7 +205,7 @@ services:
           key_claim_name:   iss
           claims_to_verify: [exp]
           run_on_preflight: false
-      # Extract sub claim from validated JWT and forward as X-User-Id to upstream
+      # Extract sub → X-User-Id and realm_access.roles → X-User-Roles
       - name: post-function
         config:
           access:
@@ -212,6 +227,21 @@ services:
               local sub = json:match('"sub"%s*:%s*"([^"]+)"')
               if sub then
                 kong.service.request.set_header("X-User-Id", sub)
+              end
+              local realm_block = json:match('"realm_access"%s*:%s*(%b{})')
+              if realm_block then
+                local roles_inner = realm_block:match('"roles"%s*:%s*%[(.-)%]')
+                if roles_inner then
+                  local filtered = {}
+                  for role in roles_inner:gmatch('"([^"]+)"') do
+                    if role == "ADMIN" or role == "EDITOR" or role == "VIEWER" then
+                      table.insert(filtered, '"' .. role .. '"')
+                    end
+                  end
+                  if #filtered > 0 then
+                    kong.service.request.set_header("X-User-Roles", '[' .. table.concat(filtered, ',') .. ']')
+                  end
+                end
               end
       # Rate limit document writes — storage cost protection
       - name: rate-limiting

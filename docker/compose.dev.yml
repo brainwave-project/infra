@@ -119,9 +119,9 @@ services:
       - ../env/services/user-hub.dev.env
     environment:
       PORT:                    ${USER_HUB_PORT:-3001}
-      DATABASE_URL:            "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}"
-      KEYCLOAK_ADMIN_USER:     ${KEYCLOAK_ADMIN_USER}
-      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      DATABASE_URL:            "postgresql://${POSTGRES_USER:-brainwave}:${POSTGRES_PASSWORD:-brainwave_dev_pass}@postgres:5432/${POSTGRES_DB:-brainwave}"
+      KEYCLOAK_ADMIN_USER:     ${KEYCLOAK_ADMIN_USER:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin_dev_pass}
       KAFKA_BROKERS:           ${KAFKA_BROKERS:-kafka:9092}
     ports:
       - "${USER_HUB_PORT:-3001}:3001"
