@@ -65,40 +65,62 @@ CREATE TABLE IF NOT EXISTS user_management.user_roles (
 );
 
 -- ---------------------------------------------------------------------------
--- permissions — Fine-grained permission definitions
+-- permissions — Fine-grained capability catalogue  (resource:action naming)
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS user_management.permissions (
     id          SERIAL          PRIMARY KEY,
-    name        VARCHAR(100)    NOT NULL UNIQUE,  -- e.g. "create_document", "delete_document"
+    name        VARCHAR(100)    NOT NULL UNIQUE,  -- "resource:action"  e.g. "document:read"
     description TEXT,
+    resource    VARCHAR(50)     NOT NULL,          -- "document" | "note" | "user" | "role" | "permission"
+    action      VARCHAR(50)     NOT NULL,          -- "read" | "create" | "update" | "delete" | ...
     created_at  TIMESTAMPTZ     NOT NULL DEFAULT now()
 );
 
--- Seed permissions per TDD
-INSERT INTO user_management.permissions (name, description) VALUES
-    ('create_document', 'Upload and create new documents'),
-    ('read_document',   'Read and download documents'),
-    ('update_document', 'Update document content (creates new version)'),
-    ('delete_document', 'Soft-delete documents (owner or admin only)'),
-    ('manage_users',    'Create, suspend, and manage user accounts (admin only)')
+COMMENT ON TABLE user_management.permissions IS 'Fine-grained capability catalogue. Names follow "resource:action" convention.';
+
+-- Seed full permission catalogue
+INSERT INTO user_management.permissions (name, resource, action, description) VALUES
+    -- Document
+    ('document:read',    'document', 'read',    'List and view documents'),
+    ('document:create',  'document', 'create',  'Upload new documents'),
+    ('document:update',  'document', 'update',  'Update document metadata'),
+    ('document:archive', 'document', 'archive', 'Archive documents'),
+    ('document:delete',  'document', 'delete',  'Delete documents'),
+    -- Note
+    ('note:read',   'note', 'read',   'Read notes on documents'),
+    ('note:create', 'note', 'create', 'Add notes to documents'),
+    ('note:update', 'note', 'update', 'Edit own notes'),
+    ('note:delete', 'note', 'delete', 'Delete notes'),
+    -- User management
+    ('user:read',   'user', 'read',   'View user list and profiles'),
+    ('user:create', 'user', 'create', 'Create new users'),
+    ('user:update', 'user', 'update', 'Update user status and details'),
+    ('user:delete', 'user', 'delete', 'Disable users'),
+    -- Role & permission management
+    ('role:read',         'role',       'read',   'View roles and their permissions'),
+    ('role:assign',       'role',       'assign', 'Assign roles to users'),
+    ('permission:manage', 'permission', 'manage', 'Grant or revoke permissions on roles')
 ON CONFLICT (name) DO NOTHING;
 
 -- ---------------------------------------------------------------------------
 -- role_permissions — Which permissions each role has
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS user_management.role_permissions (
-    role_id         INT NOT NULL REFERENCES user_management.roles(id)       ON DELETE CASCADE,
-    permission_id   INT NOT NULL REFERENCES user_management.permissions(id) ON DELETE CASCADE,
+    role_id         INT         NOT NULL REFERENCES user_management.roles(id)       ON DELETE CASCADE,
+    permission_id   INT         NOT NULL REFERENCES user_management.permissions(id) ON DELETE CASCADE,
+    granted_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    granted_by      INT         REFERENCES user_management.users(id),
     PRIMARY KEY (role_id, permission_id)
 );
 
--- Seed role-permission mappings
+COMMENT ON TABLE user_management.role_permissions IS 'Maps roles to their allowed permissions. Source of truth for the permission check middleware.';
+
+-- Seed default role-permission assignments
 DO $$
 DECLARE
     admin_id  INT;
     editor_id INT;
     viewer_id INT;
-    perm_ids  INT[];
 BEGIN
     SELECT id INTO admin_id  FROM user_management.roles WHERE name = 'ADMIN';
     SELECT id INTO editor_id FROM user_management.roles WHERE name = 'EDITOR';
@@ -109,16 +131,20 @@ BEGIN
         SELECT admin_id, id FROM user_management.permissions
         ON CONFLICT DO NOTHING;
 
-    -- EDITOR: create, read, update (no delete, no manage_users)
+    -- EDITOR: documents (no delete), notes (all), read users/roles
     INSERT INTO user_management.role_permissions (role_id, permission_id)
         SELECT editor_id, id FROM user_management.permissions
-        WHERE name IN ('create_document', 'read_document', 'update_document')
+        WHERE name IN (
+            'document:read', 'document:create', 'document:update', 'document:archive',
+            'note:read',     'note:create',     'note:update',     'note:delete',
+            'user:read',     'role:read'
+        )
         ON CONFLICT DO NOTHING;
 
-    -- VIEWER: read only
+    -- VIEWER: read-only on documents, notes, users, roles
     INSERT INTO user_management.role_permissions (role_id, permission_id)
         SELECT viewer_id, id FROM user_management.permissions
-        WHERE name = 'read_document'
+        WHERE name IN ('document:read', 'note:read', 'user:read', 'role:read')
         ON CONFLICT DO NOTHING;
 END
 $$;
