@@ -1,3 +1,10 @@
+# [1.3.0](https://github.com/brainwave-project/infra/compare/v1.2.3...v1.3.0) (2026-05-21)
+
+
+### Features
+
+* **infra:** expand permissions table with resource/action columns and full seed ([530010f](https://github.com/brainwave-project/infra/commit/530010f1696150baabb657a739acdb7c71a390f5))
+
 ## [1.2.3](https://github.com/brainwave-project/infra/compare/v1.2.2...v1.2.3) (2026-05-21)
 
 ## [1.2.2](https://github.com/brainwave-project/infra/compare/v1.2.1...v1.2.2) (2026-05-21)
