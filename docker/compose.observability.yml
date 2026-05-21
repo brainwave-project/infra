@@ -285,26 +285,12 @@ services:
       - brainwave
 
   # ===========================================================================
-  # ADMIN UI — Konga (Kong management)
+  # ADMIN UI — Kong Manager (built into Kong 3.4+ OSS, replaces Konga)
   # ===========================================================================
-
-  konga:
-    image: pantsel/konga:0.14.9
-    container_name: brainwave-konga
-    restart: on-failure:3
-    environment:
-      DB_ADAPTER:         sqlite
-      NODE_ENV:           production
-      KONGA_HOOK_TIMEOUT: "120000"
-    volumes:
-      - konga-data:/app/kongadata
-    ports:
-      - "1337:1337"
-    depends_on:
-      kong:
-        condition: service_started
-    networks:
-      - brainwave
+  # Kong Manager is served directly by Kong on port 8002.
+  # It is enabled via KONG_ADMIN_LISTEN / KONG_ADMIN_GUI_URL in compose.dev.yml.
+  # No separate container needed.
+  # → http://localhost:8002
 
 volumes:
   prometheus-data:
@@ -317,5 +303,3 @@ volumes:
     name: brainwave-tempo-data
   grafana-data:
     name: brainwave-grafana-data
-  konga-data:
-    name: brainwave-konga-data

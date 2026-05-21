@@ -1,5 +1,5 @@
 ﻿# =============================================================================
-# Dev overrides â€” applied on top of compose.yml
+# Dev overrides â€" applied on top of compose.yml
 # =============================================================================
 # Keycloak: start-dev + in-memory DB (fastest startup, no persistence)
 # All service ports exposed on 0.0.0.0 (localhost access)
@@ -56,27 +56,23 @@ services:
   kong:
     restart: on-failure:3
     environment:
-      KONG_ADMIN_LISTEN:    0.0.0.0:8001   # Exposed locally for debugging
+      # Admin API on 8001 + Kong Manager GUI on 8002 (OSS, free since 3.4).
+      # Kong Manager uses its own listener — NOT gui=on inside KONG_ADMIN_LISTEN.
+      KONG_ADMIN_LISTEN:      0.0.0.0:8001
+      KONG_ADMIN_GUI_LISTEN:  0.0.0.0:8002
+      KONG_ADMIN_GUI_URL:     http://localhost:8002
       KONG_LOG_LEVEL:       info
       KONG_DNS_TTL:         10             # Re-resolve service hostnames every 10s
       KONG_DNS_STALE_TTL:   5             # Use stale entry for max 5s while re-resolving
-    # Dev-only: when running app services on the host (npm run dev) instead of in
-    # compose, point Kong's upstream hostnames at the host gateway so it can reach
-    # them via the host-exposed ports. Harmless when services run in containers —
-    # docker DNS resolves the in-network names first.
-    extra_hosts:
-      - "auth-hub:host-gateway"
-      - "user-hub:host-gateway"
-      - "know-hub:host-gateway"
-      - "audit-hub:host-gateway"
     ports:
-      - "8000:8000"   # Proxy â€” all client traffic here
-      - "8001:8001"   # Admin API â€” local debug only, NEVER expose in prod
+      - "8000:8000"   # Proxy       — all client traffic
+      - "8001:8001"   # Admin API   — local debug only, NEVER expose in prod
+      - "8002:8002"   # Kong Manager GUI — local debug only, NEVER expose in prod
 
   # ---------------------------------------------------------------------------
   # Application services (opt-in: --profile services)
   # Mounts the full monorepo root at /workspace so that file:../core resolves.
-  # Uses node:20-alpine directly â€” no Dockerfile build step needed for dev.
+  # Uses node:20-alpine directly â€" no Dockerfile build step needed for dev.
   # Named volumes per service keep node_modules isolated from the host.
   # ---------------------------------------------------------------------------
 
