@@ -1,3 +1,10 @@
+## [1.2.2](https://github.com/brainwave-project/infra/compare/v1.2.1...v1.2.2) (2026-05-21)
+
+
+### Bug Fixes
+
+* **infra:** replace Konga with Kong Manager, fix smart-quote corruption ([124bd57](https://github.com/brainwave-project/infra/commit/124bd578be8e349b3be1deb0fa3be47c6ec0d3e4))
+
 ## [1.2.1](https://github.com/brainwave-project/infra/compare/v1.2.0...v1.2.1) (2026-05-16)
 
 # [1.2.0](https://github.com/brainwave-project/infra/compare/v1.1.3...v1.2.0) (2026-05-16)
