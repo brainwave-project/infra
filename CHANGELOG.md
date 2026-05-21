@@ -1,3 +1,10 @@
+# [1.4.0](https://github.com/brainwave-project/infra/compare/v1.3.0...v1.4.0) (2026-05-21)
+
+
+### Features
+
+* **infra:** wire X-User-Roles injection and fix runtime env-var gaps ([8747882](https://github.com/brainwave-project/infra/commit/874788250158d52d4dac2122266e205d6b7b2bb3))
+
 # [1.3.0](https://github.com/brainwave-project/infra/compare/v1.2.3...v1.3.0) (2026-05-21)
 
 
