@@ -185,3 +185,30 @@ services:
           memory: 256M
     networks:
       - brainwave
+
+  audit-hub:
+    profiles: [services]
+    image: ${REGISTRY}/${IMAGE_ORG}/audit-hub:${IMAGE_TAG}
+    container_name: brainwave-audit-hub
+    restart: always
+    environment:
+      PORT:           ${AUDIT_HUB_PORT:-3003}
+      NODE_ENV:       staging
+      SERVICE_NAME:   audit-hub
+      LOG_LEVEL:      info
+      DATABASE_URL:   "postgresql://audithub_app:${AUDITHUB_DB_PASS}@postgres:5432/${POSTGRES_DB}?schema=audit"
+      KAFKA_BROKERS:  ${KAFKA_BROKERS:-kafka:9092}
+      KAFKA_GROUP_ID: brainwave.audit-hub
+    ports:
+      - "127.0.0.1:${AUDIT_HUB_PORT:-3003}:3003"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    deploy:
+      resources:
+        reservations:
+          memory: 256M
+    networks:
+      - brainwave

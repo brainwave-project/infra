@@ -5,7 +5,8 @@
 # Always run from the infra/ directory.
 #
 #   make dev              Start local dev stack (infra + observability, no app services)
-#   make dev-services     Start local dev stack + all app services
+#   make dev-services     Same as make services — full dev stack including all hubs
+#   make services         Alias for dev-services (infra + observability + auth/user/know/audit hubs)
 #   make dev-down         Stop dev stack
 #   make staging          Start staging stack
 #   make prod             Start prod stack
@@ -25,7 +26,7 @@ DEV_F  := -f $(BASE) -f docker/compose.dev.yml     -f $(OBS) --env-file env/.env
 STG_F  := -f $(BASE) -f docker/compose.staging.yml -f $(OBS) --env-file env/.env.staging
 PRD_F  := -f $(BASE) -f docker/compose.prod.yml    -f $(OBS) --env-file env/.env.prod
 
-.PHONY: dev dev-services dev-down staging staging-services prod prod-services \
+.PHONY: dev dev-services services dev-down staging staging-services prod prod-services \
         down reset ps logs urls lint
 
 # ---------------------------------------------------------------------------
@@ -34,8 +35,18 @@ PRD_F  := -f $(BASE) -f docker/compose.prod.yml    -f $(OBS) --env-file env/.env
 dev:
 	docker compose $(DEV_F) up -d
 
+# Brings up every compose service: base infra, observability, and --profile services hubs.
+# One-shot jobs (minio-init, kafka-init) run then exit — they are expected not to stay Up.
 dev-services:
-	docker compose $(DEV_F) --profile services up -d
+	docker compose $(DEV_F) --profile services up -d --remove-orphans
+	@echo ""
+	@echo "Compose project started (profile: services)."
+	@echo "  App containers: auth-hub, user-hub, know-hub, audit-hub"
+	@echo "  Not in Docker:  ui — run separately: cd ../ui && npm run dev  (http://localhost:5173)"
+	@echo "  Check status:   make ps"
+
+# Alias — same as dev-services
+services: dev-services
 
 dev-down:
 	docker compose $(DEV_F) down
@@ -47,7 +58,7 @@ staging:
 	docker compose $(STG_F) up -d
 
 staging-services:
-	docker compose $(STG_F) --profile services up -d
+	docker compose $(STG_F) --profile services up -d --remove-orphans
 
 # ---------------------------------------------------------------------------
 # Production
@@ -56,7 +67,7 @@ prod:
 	docker compose $(PRD_F) up -d
 
 prod-services:
-	docker compose $(PRD_F) --profile services up -d
+	docker compose $(PRD_F) --profile services up -d --remove-orphans
 
 # ---------------------------------------------------------------------------
 # Shared
@@ -96,6 +107,7 @@ urls:
 	@echo "  │  auth-hub             http://localhost:3000/api/docs                │"
 	@echo "  │  user-hub             http://localhost:3001/api/docs                │"
 	@echo "  │  know-hub             http://localhost:3002/api/docs                │"
+	@echo "  │  audit-hub            http://localhost:3003/api/docs                │"
 	@echo "  └────────────────────────────────────────────────────────────────────┘"
 	@echo ""
 	@echo "  ┌─ Observability (Three Pillars) ────────────────────────────────────┐"
