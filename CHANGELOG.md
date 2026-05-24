@@ -1,3 +1,10 @@
+# [1.5.0](https://github.com/brainwave-project/infra/compare/v1.4.0...v1.5.0) (2026-05-24)
+
+
+### Features
+
+* **infra:** pass KEYCLOAK_ADMIN_USER/PASSWORD to auth-hub container ([c6b7db1](https://github.com/brainwave-project/infra/commit/c6b7db10012f5cd74685d56ca61896c9e495fcbc))
+
 # [1.4.0](https://github.com/brainwave-project/infra/compare/v1.3.0...v1.4.0) (2026-05-21)
 
 
