@@ -73,6 +73,7 @@ services:
           - /api/auth/callback
           - /api/auth/password-reset
           - /api/auth/password-update
+          - /api/auth/set-password
         methods: [GET, POST, OPTIONS]
         strip_path: false
         preserve_host: false
