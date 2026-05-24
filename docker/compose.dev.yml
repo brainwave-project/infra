@@ -166,6 +166,8 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      auth-hub:
+        condition: service_started
     networks:
       - brainwave
 
