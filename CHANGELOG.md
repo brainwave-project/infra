@@ -1,3 +1,10 @@
+# [1.7.0](https://github.com/brainwave-project/infra/compare/v1.6.0...v1.7.0) (2026-05-24)
+
+
+### Features
+
+* **infra:** configure know-hub gRPC connectivity to auth-hub ([bea86ae](https://github.com/brainwave-project/infra/commit/bea86ae7113d6a50368dcf8105f656dd8f00693a))
+
 # [1.6.0](https://github.com/brainwave-project/infra/compare/v1.5.0...v1.6.0) (2026-05-24)
 
 
