@@ -88,12 +88,14 @@ services:
     env_file:
       - ../env/services/auth-hub.dev.env
     environment:
-      PORT:                   ${AUTH_HUB_PORT:-3000}
-      GRPC_PORT:              ${AUTH_HUB_GRPC_PORT:-50051}
-      DB_USER:                ${POSTGRES_USER}
-      DB_PASS:                ${POSTGRES_PASSWORD}
-      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_AUTH_HUB_SECRET}
-      KAFKA_BROKERS:          ${KAFKA_BROKERS:-kafka:9092}
+      PORT:                    ${AUTH_HUB_PORT:-3000}
+      GRPC_PORT:               ${AUTH_HUB_GRPC_PORT:-50051}
+      DB_USER:                 ${POSTGRES_USER}
+      DB_PASS:                 ${POSTGRES_PASSWORD}
+      KEYCLOAK_CLIENT_SECRET:  ${KEYCLOAK_AUTH_HUB_SECRET}
+      KEYCLOAK_ADMIN_USER:     ${KEYCLOAK_ADMIN_USER:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin_dev_pass}
+      KAFKA_BROKERS:           ${KAFKA_BROKERS:-kafka:9092}
     ports:
       - "${AUTH_HUB_PORT:-3000}:3000"
       - "${AUTH_HUB_GRPC_PORT:-50051}:50051"
