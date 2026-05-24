@@ -1,3 +1,10 @@
+# [1.6.0](https://github.com/brainwave-project/infra/compare/v1.5.0...v1.6.0) (2026-05-24)
+
+
+### Features
+
+* **kong:** expose /api/auth/set-password as a public auth route ([71fb054](https://github.com/brainwave-project/infra/commit/71fb05414915221e802a8b12f412447382bb8fd9))
+
 # [1.5.0](https://github.com/brainwave-project/infra/compare/v1.4.0...v1.5.0) (2026-05-24)
 
 
