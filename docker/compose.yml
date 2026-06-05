@@ -18,10 +18,13 @@ name: brainwave
 services:
 
   # ---------------------------------------------------------------------------
-  # PostgreSQL — System of record (user_management + doc schemas)
+  # PostgreSQL — System of record (user_management + doc + sem schemas)
+  # pgvector/pgvector:pg16 = stock postgres:16 + the `vector` extension.
+  # Binary on-disk format is identical to postgres:16 — swapping the image on an
+  # existing brainwave-postgres-data volume is a safe, in-place upgrade.
   # ---------------------------------------------------------------------------
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     container_name: brainwave-postgres
     environment:
       POSTGRES_USER:     ${POSTGRES_USER}
@@ -185,6 +188,48 @@ services:
     restart: "no"
 
   # ---------------------------------------------------------------------------
+  # Ollama — Local embedding model runtime (Semantic Layer, Phase 1)
+  # Serves nomic-embed-text (768-dim) on :11434 over the brainwave network.
+  # All embedding inference is local — document text never leaves the network.
+  #
+  # The model is NOT bundled in the image. It is pulled once into the
+  # ollama-data volume by the one-shot ollama-init service below, then survives
+  # restarts. know-hub reaches this at http://ollama:11434 (internal DNS).
+  # Port is exposed for local debugging in compose.dev.yml only.
+  # ---------------------------------------------------------------------------
+  ollama:
+    image: ollama/ollama:latest
+    container_name: brainwave-ollama
+    volumes:
+      - ollama-data:/root/.ollama   # model weights persist across restarts
+    healthcheck:
+      # `ollama list` returns non-zero until the daemon's API is accepting calls.
+      test: ["CMD-SHELL", "ollama list > /dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - brainwave
+
+  # ---------------------------------------------------------------------------
+  # Ollama Init — Pulls nomic-embed-text on first boot (one-shot, idempotent)
+  # Replaces the manual `docker exec ... ollama pull` first-run step.
+  # `ollama pull` is a no-op if the model already exists in the volume, so this
+  # is safe to re-run on every `up`. Uses the same image (ollama CLI built in).
+  # ---------------------------------------------------------------------------
+  ollama-init:
+    image: ollama/ollama:latest
+    container_name: brainwave-ollama-init
+    depends_on:
+      ollama:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c", "OLLAMA_HOST=http://ollama:11434 ollama pull ${OLLAMA_MODEL:-nomic-embed-text}"]
+    networks:
+      - brainwave
+    restart: "no"
+
+  # ---------------------------------------------------------------------------
   # Kong — DB-less API Gateway
   # Admin listen and log level are set in environment overrides
   # ---------------------------------------------------------------------------
@@ -224,6 +269,8 @@ volumes:
     name: brainwave-keycloak-data
   kafka-data:
     name: brainwave-kafka-data
+  ollama-data:
+    name: brainwave-ollama-data
 
 # =============================================================================
 # Networks

@@ -11,3 +11,8 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- Case-insensitive text — for email uniqueness checks (optional but useful)
 CREATE EXTENSION IF NOT EXISTS "citext";
+
+-- pgvector — 768-dim embedding storage + HNSW ANN index for KnowHub Semantic Layer.
+-- Provided by the pgvector/pgvector:pg16 image. Must exist before the sem schema
+-- (05-semantic.sql) declares any vector() columns.
+CREATE EXTENSION IF NOT EXISTS "vector";

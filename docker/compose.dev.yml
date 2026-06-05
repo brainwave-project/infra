@@ -53,6 +53,11 @@ services:
     ports:
       - "29092:29092"   # External listener — host access (kafkajs, kafka-cli, etc.)
 
+  ollama:
+    restart: on-failure:3
+    ports:
+      - "11434:11434"   # Embedding API — local debug only (curl /api/tags, /api/embed)
+
   kong:
     restart: on-failure:3
     environment:
@@ -154,6 +159,8 @@ services:
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
       KAFKA_BROKERS:    ${KAFKA_BROKERS:-kafka:9092}
+      # Semantic Layer literal config (OLLAMA_*, SEMANTIC_*) lives in
+      # env/services/know-hub.dev.env alongside the other non-secret defaults.
     ports:
       - "${KNOW_HUB_PORT:-3002}:3002"
     volumes:
@@ -165,6 +172,8 @@ services:
       mongodb:
         condition: service_healthy
       minio:
+        condition: service_healthy
+      ollama:
         condition: service_healthy
       auth-hub:
         condition: service_started

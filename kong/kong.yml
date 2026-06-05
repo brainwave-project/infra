@@ -196,6 +196,7 @@ services:
         paths:
           - /api/documents
           - /api/notes
+          - /api/semantic
         methods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
         strip_path: false
         preserve_host: false
