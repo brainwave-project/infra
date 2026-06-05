@@ -1,3 +1,10 @@
+# [1.8.0](https://github.com/brainwave-project/infra/compare/v1.7.0...v1.8.0) (2026-06-05)
+
+
+### Features
+
+* **infra:** add Ollama embedding service and pgvector store for semantic layer ([986270c](https://github.com/brainwave-project/infra/commit/986270c18df4fa37fd008088972e8cdc18121428))
+
 # [1.7.0](https://github.com/brainwave-project/infra/compare/v1.6.0...v1.7.0) (2026-05-24)
 
 
