@@ -292,6 +292,38 @@ services:
   # No separate container needed.
   # → http://localhost:8002
 
+  # ===========================================================================
+  # LLM OBSERVABILITY — Langfuse (self-hosted)
+  # ===========================================================================
+  # Conversational RAG (Phase 2) tracing. Self-hosted so prompts/completions —
+  # which contain document text — never leave the network (TDD ADR-RAG-02).
+  # Complements (does not replace) the OTel→Tempo stack: OTel answers "is the
+  # service healthy?", Langfuse answers "is the AI any good?".
+  #
+  # Uses the shared brainwave-postgres instance (dedicated 'langfuse' database
+  # created by infra/postgres/init/07-langfuse.sh on first volume creation).
+  # No separate Postgres container needed.
+  #
+  # UI → http://localhost:3060   (create a project, copy keys into know-hub env)
+  # ---------------------------------------------------------------------------
+  langfuse:
+    image: langfuse/langfuse:2
+    container_name: brainwave-langfuse
+    restart: on-failure:3
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL:      postgresql://langfuse:${LANGFUSE_DB_PASSWORD:-langfuse_dev_pass}@postgres:5432/langfuse
+      NEXTAUTH_URL:      http://localhost:3060
+      NEXTAUTH_SECRET:   ${LANGFUSE_NEXTAUTH_SECRET:-langfuse-dev-nextauth-secret-change-me}
+      SALT:              ${LANGFUSE_SALT:-langfuse-dev-salt-change-me}
+      TELEMETRY_ENABLED: "false"          # no phone-home — stay air-gapped
+    ports:
+      - "3060:3000"                       # UI → http://localhost:3060
+    networks:
+      - brainwave
+
 volumes:
   prometheus-data:
     name: brainwave-prometheus-data
