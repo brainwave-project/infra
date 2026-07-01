@@ -226,6 +226,7 @@ services:
              ([ -x /opt/venv/bin/python ] || uv venv /opt/venv) &&
              . /opt/venv/bin/activate &&
              uv pip install -e . &&
+             ( [ x$$INSTALL_RERANK = xtrue ] && uv pip install --index-url https://download.pytorch.org/whl/cpu torch && uv pip install 'sentence-transformers>=3.3' || true ) &&
              python scripts/gen_proto.py &&
              python -m uvicorn agent_hub.transport.http.app:app --host 0.0.0.0 --port 3004 --reload --reload-dir src"
     env_file:
