@@ -206,6 +206,52 @@ services:
     networks:
       - brainwave
 
+  # ---------------------------------------------------------------------------
+  # agent-hub (Phase 3) — Python · LangGraph · reasoning only.
+  # Dev mirrors the TS hubs (source-mounted + install at start for hot reload),
+  # but with uv + a persisted venv volume instead of node_modules. Prod uses the
+  # agent-hub/Dockerfile image from GHCR.
+  # ---------------------------------------------------------------------------
+  agent-hub:
+    profiles: [services]
+    image: python:3.12-slim
+    container_name: brainwave-agent-hub
+    working_dir: /workspace/agent-hub
+    restart: on-failure:3
+    # Restart-safe: the venv lives on a named volume, so create it only when
+    # missing (uv refuses to recreate an existing venv). Editable install +
+    # stub gen are idempotent and fast on a warm volume.
+    command: >
+      sh -c "pip install --no-cache-dir uv &&
+             ([ -x /opt/venv/bin/python ] || uv venv /opt/venv) &&
+             . /opt/venv/bin/activate &&
+             uv pip install -e . &&
+             python scripts/gen_proto.py &&
+             python -m uvicorn agent_hub.transport.http.app:app --host 0.0.0.0 --port 3004 --reload --reload-dir src"
+    env_file:
+      - ../env/services/agent-hub.dev.env
+    environment:
+      PORT:           ${AGENT_HUB_PORT:-3004}
+      # agent_role / agent_dev_password are provisioned by postgres/init/40-agent.sql.
+      DATABASE_URL:   "postgresql://agent_role:agent_dev_password@postgres:5432/${POSTGRES_DB:-brainwave}"
+      KAFKA_BROKERS:  ${KAFKA_BROKERS:-kafka:9092}
+      VIRTUAL_ENV:    /opt/venv
+      PATH:           /opt/venv/bin:/usr/local/bin:/usr/bin:/bin
+    ports:
+      - "${AGENT_HUB_PORT:-3004}:3004"
+    volumes:
+      - ../../:/workspace
+      - agent-hub-venv:/opt/venv
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    networks:
+      - brainwave
+
 volumes:
   auth-hub-node-modules:
     name: brainwave-auth-hub-node-modules
@@ -215,4 +261,6 @@ volumes:
     name: brainwave-know-hub-node-modules
   audit-hub-node-modules:
     name: brainwave-audit-hub-node-modules
+  agent-hub-venv:
+    name: brainwave-agent-hub-venv
 

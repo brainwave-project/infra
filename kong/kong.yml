@@ -325,6 +325,80 @@ services:
               end
 
   # ---------------------------------------------------------------------------
+  # AgentHub (Phase 3) — Agentic RAG. SSE streaming of the agent's reasoning
+  # trajectory, so the route disables response buffering and uses a long read
+  # timeout for slow local reasoning (TDD §10.3 / §11.2). Same JWT + header
+  # injection as know-hub-chat; X-User-Id / X-User-Name / X-User-Roles flow
+  # downstream and CRAG propagates the caller's identity into know-hub retrieval
+  # so it can only ever see the calling user's documents (review Issue 1).
+  # ---------------------------------------------------------------------------
+  - name: agent-hub
+    url: http://agent-hub:3004
+    connect_timeout: 5000
+    read_timeout:    300000   # allow long reasoning + generation (5 min)
+    write_timeout:   60000
+    retries:         0        # never retry a stream
+    routes:
+      - name: agent-hub-routes
+        paths:
+          - /api/agent
+        methods: [GET, POST, PATCH, DELETE, OPTIONS]
+        strip_path: false
+        preserve_host: false
+        # critical for SSE: stream the upstream response instead of buffering it
+        response_buffering: false
+    plugins:
+      - name: jwt
+        config:
+          key_claim_name:   iss
+          claims_to_verify: [exp]
+          run_on_preflight: false
+      - name: post-function
+        config:
+          access:
+            - |
+              local auth = kong.request.get_header("authorization")
+              if not auth then return end
+              local token = auth:match("^[Bb]earer%s+(.+)$")
+              if not token then return end
+              local parts = {}
+              for part in token:gmatch("[^.]+") do parts[#parts+1] = part end
+              if #parts ~= 3 then return end
+              local b64 = parts[2]
+              local r = #b64 % 4
+              if r == 2 then b64 = b64 .. "=="
+              elseif r == 3 then b64 = b64 .. "=" end
+              b64 = b64:gsub("-", "+"):gsub("_", "/")
+              local json = ngx.decode_base64(b64)
+              if not json then return end
+              local sub = json:match('"sub"%s*:%s*"([^"]+)"')
+              if sub then
+                kong.service.request.set_header("X-User-Id", sub)
+              end
+              local name = json:match('"name"%s*:%s*"([^"]+)"')
+              if not name or name == "" then
+                name = json:match('"preferred_username"%s*:%s*"([^"]+)"')
+              end
+              if name then
+                kong.service.request.set_header("X-User-Name", name)
+              end
+              local realm_block = json:match('"realm_access"%s*:%s*(%b{})')
+              if realm_block then
+                local roles_inner = realm_block:match('"roles"%s*:%s*%[(.-)%]')
+                if roles_inner then
+                  local filtered = {}
+                  for role in roles_inner:gmatch('"([^"]+)"') do
+                    if role == "ADMIN" or role == "EDITOR" or role == "VIEWER" then
+                      table.insert(filtered, '"' .. role .. '"')
+                    end
+                  end
+                  if #filtered > 0 then
+                    kong.service.request.set_header("X-User-Roles", '[' .. table.concat(filtered, ',') .. ']')
+                  end
+                end
+              end
+
+  # ---------------------------------------------------------------------------
   # AuditHub — Audit event query API. Requires valid JWT.
   # ---------------------------------------------------------------------------
   - name: audit-hub
