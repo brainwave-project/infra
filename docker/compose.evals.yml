@@ -1,0 +1,225 @@
+# =============================================================================
+# Evaluation stack — applied on top of compose.yml + compose.dev.yml
+# =============================================================================
+# A deliberately lean slice of the stack for Domain 1 (Evaluation & Measurement)
+# and Domain 2 (Arabic & Multilingual Retrieval) work.
+#
+# What it runs:   postgres · mongodb · minio · kafka · ollama · know-hub
+#                 (+ langfuse, optional)
+# What it skips:  keycloak · kong · auth-hub · user-hub · audit-hub
+#                 and the entire observability stack (prometheus, grafana,
+#                 loki, tempo, otel-collector, cadvisor, exporters).
+#
+# Skipping Kong and Keycloak is safe here because know-hub's permission
+# middleware reads X-User-Roles and nothing else — it never validates a JWT,
+# trusting Kong to have done so upstream. The eval client supplies the headers
+# Kong would have injected. That is also a standing reminder that know-hub must
+# never be reachable from outside this network.
+#
+# Two things this file changes that the eval genuinely depends on:
+#
+#   1. SEMANTIC_WORKER_ENABLED=true on know-hub. The dev default is FALSE
+#      (agent-hub's ingestion crew owns indexing from M6), so without this
+#      override nothing would ever be embedded and every retrieval score would
+#      be a confusing zero.
+#
+#   2. The agent-hub SERVICE is intentionally NOT started. Its Kafka ingestion
+#      consumer subscribes to DOCUMENT_UPLOADED unconditionally, so running it
+#      alongside know-hub's worker would index every document twice and corrupt
+#      the vector store. The eval harness instead runs as the one-shot
+#      `eval-runner` container below, which builds the CRAG graph in-process —
+#      it needs agent-hub's CODE, not its HTTP server.
+#
+# Usage:  make evals        (from infra/)
+# =============================================================================
+
+services:
+
+  # Restated so the eval stack never auto-restarts with Docker Desktop, even if
+  # the dev overlay is edited later.
+  postgres:
+    restart: "no"
+  mongodb:
+    restart: "no"
+  minio:
+    restart: "no"
+  kafka:
+    restart: "no"
+  ollama:
+    restart: "no"
+
+  know-hub:
+    restart: "no"
+    environment:
+      # THE critical override — see note 1 above.
+      SEMANTIC_WORKER_ENABLED: "true"
+      # DocumentInternal gRPC server: the chunk-level retrieval path the CRAG
+      # graph uses. Defaults to enabled in env.ts; stated here so the eval
+      # stack does not silently depend on that default.
+      GRPC_ENABLED: "true"
+      GRPC_PORT:    "50052"
+      # No floor at query time. know-hub defaults to 0.60, which would truncate
+      # rankings before the metrics ever saw them — recall@k would then measure
+      # the threshold rather than the retriever. Filtering stays an explicit
+      # decision made by the eval, not a hidden default.
+      SIMILARITY_THRESHOLD: "0.0"
+      # The observability overlay is not part of the eval stack, so the OTLP
+      # exporter would retry against a hostname that does not resolve and bury
+      # the real logs in ENOTFOUND noise.
+      OTEL_SDK_DISABLED: "true"
+      # Same reasoning: the dev env sets LANGFUSE_ENABLED=true against
+      # http://langfuse:3000, which is not part of this stack. know-hub still
+      # boots (the tracer fails soft), but it waits on a connection that cannot
+      # succeed, which measurably slows startup for no benefit — the eval reads
+      # no traces.
+      LANGFUSE_ENABLED: "false"
+    ports:
+      - "50052:50052"   # host access for chunk-level debugging
+
+  # ---------------------------------------------------------------------------
+  # eval-runner — one-shot harness container (profile: evals)
+  #
+  # Mirrors agent-hub's dev container (source-mounted, uv, persisted venv) but
+  # runs a command and exits instead of serving. Driven with
+  # `docker compose run --rm eval-runner ...` from the Makefile.
+  #
+  # Its venv is a SEPARATE volume from agent-hub's: this one carries the heavy
+  # eval-only tree (ragas, datasets, pandas, pyarrow) that has no business in
+  # the service image.
+  # ---------------------------------------------------------------------------
+  eval-runner:
+    profiles: [evals]
+    image: python:3.12-slim
+    container_name: brainwave-eval-runner
+    working_dir: /workspace/agent-hub
+    restart: "no"
+    env_file:
+      - ../env/services/agent-hub.dev.env
+    environment:
+      DATABASE_URL: "postgresql://agent_role:agent_dev_password@postgres:5432/${POSTGRES_DB:-brainwave}"
+      KAFKA_BROKERS: ${KAFKA_BROKERS:-kafka:9092}
+      KNOW_HUB_URL: "http://know-hub:3002"
+      KNOW_HUB_GRPC_PORT: "50052"
+      VIRTUAL_ENV: /opt/venv
+      PATH: /opt/venv/bin:/usr/local/bin:/usr/bin:/bin
+      PYTHONUNBUFFERED: "1"
+      PYTHONIOENCODING: "utf-8"   # the report prints Arabic
+      # DEVIATES from the shipped default (CRAG_MIN_SCORE=0.0 in
+      # env/services/agent-hub.dev.env), deliberately and with measurements.
+      #
+      # At 0.0 the retriever returns top_k chunks however weak they are, so a
+      # question arrives at the grader as 1 good chunk plus 5 off-topic ones.
+      # The grade prompt is explicitly strict ("if the context is off-topic or
+      # only tangentially related, mark it NOT relevant") and it grades the
+      # WHOLE context, not each chunk — so it rejects a context that does
+      # contain the answer, the corrective loop burns through CRAG_MAX_LOOPS,
+      # and CRAG abstains on a question it just retrieved the answer for.
+      #
+      # Measured over the first 5 English golden questions:
+      #
+      #   min_score   chunks per question   abstained
+      #   0.0         6, 6, 6, 6, 6         5/5   grader rejects noisy context
+      #   0.5         1, 6, 6, …            2/3   same, partially
+      #   0.65        1, 2, 1, 1, 1         0/5   clean context  <-- chosen
+      #   0.75        1, 1, 1, 1, 0         1/5   retrieval starved
+      #
+      # A U-shaped curve with two different failure modes on either side. 0.65
+      # is picked from that sweep, not guessed.
+      #
+      # This is a finding about the shipped config, not a fix to it — changing
+      # the shipped default is a governance decision that deserves a larger
+      # question set than this one. See eval/README.md.
+      CRAG_MIN_SCORE: "0.65"
+      # RAGAS phones home to an OpenAI endpoint unless told otherwise. The judge
+      # is wired to local Ollama in code; this is belt-and-braces so a
+      # misconfiguration fails loudly instead of leaking document text.
+      OPENAI_API_KEY: "not-used-air-gapped"
+      RAGAS_DO_NOT_TRACK: "true"
+      HF_HUB_DISABLE_TELEMETRY: "1"
+    volumes:
+      - ../../:/workspace
+      - eval-venv:/opt/venv
+    # Bootstrap is idempotent and cheap on a warm volume; the venv persists.
+    entrypoint:
+      - /bin/sh
+      - -lc
+      - |
+        set -e
+        if [ ! -x /opt/venv/bin/python ]; then
+          pip install --no-cache-dir --quiet uv
+          uv venv /opt/venv
+        fi
+        . /opt/venv/bin/activate
+        if [ ! -f /opt/venv/.eval-deps-installed ]; then
+          pip install --no-cache-dir --quiet uv 2>/dev/null || true
+          uv pip install --quiet -e '.[eval]'
+          python scripts/gen_proto.py
+          touch /opt/venv/.eval-deps-installed
+        fi
+        exec "$@"
+      - --
+    command: ["python", "-m", "agent_hub.eval.run_suite", "--suite", "all"]
+    networks:
+      - brainwave
+
+  # ---------------------------------------------------------------------------
+  # ragas-runner — stage 2 of the generation eval, in an ISOLATED venv.
+  #
+  # RAGAS imports langchain_community.chat_models.vertexai at module load. That
+  # module was removed in langchain-community 0.4, and agent-hub runs the
+  # langchain-core 1.x stack (langchain-ollama 1.1, langchain-community 0.4.x).
+  # Pinning langchain-community below 0.4 to satisfy RAGAS would drag
+  # langchain-core below 0.4 and break agent-hub. They cannot share a venv.
+  #
+  # So RAGAS gets its own venv volume with its own pins
+  # (verified to resolve: ragas 0.2.15 + langchain-community 0.3.31 +
+  # langchain-core 0.3.86), and runs exactly one file: scripts/ragas_score.py,
+  # which imports NO agent_hub code. The two stages communicate only through a
+  # JSON file written by stage 1 into the shared /workspace mount.
+  # ---------------------------------------------------------------------------
+  ragas-runner:
+    profiles: [evals]
+    image: python:3.12-slim
+    container_name: brainwave-ragas-runner
+    working_dir: /workspace/agent-hub
+    restart: "no"
+    environment:
+      OLLAMA_BASE_URL: "http://ollama:11434"
+      AGENT_REASONING_MODEL: "llama3.1:8b-instruct-q4_K_M"
+      VIRTUAL_ENV: /opt/ragas-venv
+      PATH: /opt/ragas-venv/bin:/usr/local/bin:/usr/bin:/bin
+      PYTHONUNBUFFERED: "1"
+      PYTHONIOENCODING: "utf-8"
+      OPENAI_API_KEY: "not-used-air-gapped"
+      RAGAS_DO_NOT_TRACK: "true"
+      HF_HUB_DISABLE_TELEMETRY: "1"
+    volumes:
+      - ../../:/workspace
+      - ragas-venv:/opt/ragas-venv
+    entrypoint:
+      - /bin/sh
+      - -lc
+      - |
+        set -e
+        if [ ! -x /opt/ragas-venv/bin/python ]; then
+          pip install --no-cache-dir --quiet uv
+          uv venv /opt/ragas-venv
+        fi
+        . /opt/ragas-venv/bin/activate
+        if [ ! -f /opt/ragas-venv/.ragas-installed ]; then
+          pip install --no-cache-dir --quiet uv 2>/dev/null || true
+          uv pip install --quiet 'ragas>=0.2,<0.3' 'langchain-community<0.4' \
+                                 'langchain-ollama<0.3' 'datasets>=3.0'
+          touch /opt/ragas-venv/.ragas-installed
+        fi
+        exec "$@"
+      - --
+    command: ["python", "scripts/ragas_score.py", "--help"]
+    networks:
+      - brainwave
+
+volumes:
+  eval-venv:
+    name: brainwave-eval-venv
+  ragas-venv:
+    name: brainwave-ragas-venv

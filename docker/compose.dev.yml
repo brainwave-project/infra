@@ -19,23 +19,23 @@
 services:
 
   postgres:
-    restart: on-failure:3
+    restart: "no"
     ports:
       - "6632:5432"
 
   mongodb:
-    restart: on-failure:3
+    restart: "no"
     ports:
       - "27017:27017"
 
   minio:
-    restart: on-failure:3
+    restart: "no"
     ports:
       - "9000:9000"   # S3 API
       - "9001:9001"   # Web console â†’ http://localhost:9001
 
   keycloak:
-    restart: on-failure:3
+    restart: "no"
     # dev-file: H2 written to the container's own filesystem (no volume mount needed).
     # Avoids the root-owned volume permission error. Data is ephemeral like dev-mem
     # but migrations initialise reliably before the realm import runs.
@@ -49,17 +49,17 @@ services:
       - "8080:8080"   # Admin: http://localhost:8080/admin
 
   kafka:
-    restart: on-failure:3
+    restart: "no"
     ports:
       - "29092:29092"   # External listener — host access (kafkajs, kafka-cli, etc.)
 
   ollama:
-    restart: on-failure:3
+    restart: "no"
     ports:
       - "11434:11434"   # Embedding API — local debug only (curl /api/tags, /api/embed)
 
   kong:
-    restart: on-failure:3
+    restart: "no"
     environment:
       # Admin API on 8001 + Kong Manager GUI on 8002 (OSS, free since 3.4).
       # Kong Manager uses its own listener — NOT gui=on inside KONG_ADMIN_LISTEN.
@@ -86,7 +86,7 @@ services:
     image: node:20-alpine
     container_name: brainwave-auth-hub
     working_dir: /workspace/auth-hub
-    restart: on-failure:3
+    restart: "no"
     command: sh -c "npm install && npx tsx --import @opentelemetry/auto-instrumentations-node/register src/index.ts"
     # Literal config (NODE_ENV, KEYCLOAK_*) is in env/services/auth-hub.dev.env.
     # environment: below only carries values that need ${...} interpolation.
@@ -120,7 +120,7 @@ services:
     image: node:20-alpine
     container_name: brainwave-user-hub
     working_dir: /workspace/user-hub
-    restart: on-failure:3
+    restart: "no"
     command: sh -c "apk add --no-cache openssl && npm install && npx prisma generate && npx prisma db seed && npx tsx --import @opentelemetry/auto-instrumentations-node/register src/index.ts"
     env_file:
       - ../env/services/user-hub.dev.env
@@ -148,7 +148,7 @@ services:
     image: node:20-alpine
     container_name: brainwave-know-hub
     working_dir: /workspace/know-hub
-    restart: on-failure:3
+    restart: "no"
     command: sh -c "apk add --no-cache openssl && npm install && npx prisma generate && npx tsx --import @opentelemetry/auto-instrumentations-node/register src/index.ts"
     env_file:
       - ../env/services/know-hub.dev.env
@@ -185,7 +185,7 @@ services:
     image: node:20-alpine
     container_name: brainwave-audit-hub
     working_dir: /workspace/audit-hub
-    restart: on-failure:3
+    restart: "no"
     command: sh -c "apk add --no-cache openssl && npm install && npx prisma generate && npx tsx --import @opentelemetry/auto-instrumentations-node/register src/index.ts"
     env_file:
       - ../env/services/audit-hub.dev.env
@@ -217,7 +217,7 @@ services:
     image: python:3.12-slim
     container_name: brainwave-agent-hub
     working_dir: /workspace/agent-hub
-    restart: on-failure:3
+    restart: "no"
     # Restart-safe: the venv lives on a named volume, so create it only when
     # missing (uv refuses to recreate an existing venv). Editable install +
     # stub gen are idempotent and fast on a warm volume.

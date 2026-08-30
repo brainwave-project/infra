@@ -46,7 +46,7 @@ services:
   prometheus:
     image: prom/prometheus:v2.55.0
     container_name: brainwave-prometheus
-    restart: on-failure:3
+    restart: "no"
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.retention.time=15d'
@@ -67,7 +67,7 @@ services:
   alertmanager:
     image: prom/alertmanager:v0.27.0
     container_name: brainwave-alertmanager
-    restart: on-failure:3
+    restart: "no"
     command:
       - '--config.file=/etc/alertmanager/alertmanager.yml'
       - '--storage.path=/alertmanager'
@@ -83,7 +83,7 @@ services:
   node-exporter:
     image: prom/node-exporter:v1.8.2
     container_name: brainwave-node-exporter
-    restart: on-failure:3
+    restart: "no"
     command:
       - '--path.procfs=/host/proc'
       - '--path.rootfs=/rootfs'
@@ -102,7 +102,7 @@ services:
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:v0.49.1
     container_name: brainwave-cadvisor
-    restart: on-failure:3
+    restart: "no"
     privileged: true
     devices:
       - /dev/kmsg:/dev/kmsg
@@ -120,7 +120,7 @@ services:
   postgres-exporter:
     image: prometheuscommunity/postgres-exporter:v0.16.0
     container_name: brainwave-postgres-exporter
-    restart: on-failure:3
+    restart: "no"
     environment:
       DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable"
     ports:
@@ -135,7 +135,7 @@ services:
   mongodb-exporter:
     image: percona/mongodb_exporter:0.43
     container_name: brainwave-mongodb-exporter
-    restart: on-failure:3
+    restart: "no"
     command:
       - '--mongodb.uri=mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongodb:27017/admin?authSource=admin'
       - '--collect-all'
@@ -154,7 +154,7 @@ services:
   loki:
     image: grafana/loki:3.2.0
     container_name: brainwave-loki
-    restart: on-failure:3
+    restart: "no"
     # Same dev workaround as tempo: the image runs as a non-root user but the
     # named volume mounts root-owned on first start, so `mkdir /tmp/loki/rules`
     # fails. Run as root in dev — replace with a proper init-container in prod.
@@ -171,7 +171,7 @@ services:
   promtail:
     image: grafana/promtail:3.2.0
     container_name: brainwave-promtail
-    restart: on-failure:3
+    restart: "no"
     command: -config.file=/etc/promtail/promtail-config.yml
     volumes:
       - ../promtail/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
@@ -190,7 +190,7 @@ services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.112.0
     container_name: brainwave-otel-collector
-    restart: on-failure:3
+    restart: "no"
     command: ["--config=/etc/otel-collector/otel-collector.yml"]
     volumes:
       - ../otel-collector/otel-collector.yml:/etc/otel-collector/otel-collector.yml:ro
@@ -215,7 +215,7 @@ services:
   tempo:
     image: grafana/tempo:2.6.0
     container_name: brainwave-tempo
-    restart: on-failure:3
+    restart: "no"
     # Tempo 2.6's image runs as uid 10001 by default, which can't write to a
     # fresh named volume (root-owned on first mount). Running as root in dev
     # sidesteps the chown dance. Use a proper init-container or pre-seeded
@@ -240,7 +240,7 @@ services:
   grafana:
     image: grafana/grafana:11.3.0
     container_name: brainwave-grafana
-    restart: on-failure:3
+    restart: "no"
     environment:
       GF_SECURITY_ADMIN_USER:         admin
       GF_SECURITY_ADMIN_PASSWORD:     admin
@@ -271,7 +271,7 @@ services:
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     container_name: brainwave-kafka-ui
-    restart: on-failure:3
+    restart: "no"
     environment:
       KAFKA_CLUSTERS_0_NAME:             brainwave-dev
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
@@ -309,7 +309,7 @@ services:
   langfuse:
     image: langfuse/langfuse:2
     container_name: brainwave-langfuse
-    restart: on-failure:3
+    restart: "no"
     depends_on:
       postgres:
         condition: service_healthy
