@@ -218,8 +218,91 @@ services:
     networks:
       - brainwave
 
+  # ---------------------------------------------------------------------------
+  # eval-api — the Eval Lab backend behind the UI's Evaluation section
+  # (profile: evals). Long-running, unlike eval-runner.
+  #
+  # Serves agent_hub.eval.lab on :3005 (dataset construction, readiness checks,
+  # retrieval probes, pre-registered experiments). It reuses the harness's
+  # metrics/stats code, so UI numbers and `make evals` numbers are the same
+  # arithmetic.
+  #
+  # Two properties it shares with eval-runner, for the same reasons:
+  #   * It talks to know-hub DIRECTLY with synthetic X-User-* headers — so it is
+  #     published only on localhost and never routed through Kong.
+  #   * It is NOT the agent-hub service: no Kafka consumer, so no double-indexing
+  #     alongside know-hub's semantic worker.
+  #
+  # Each dataset index uploads under its own synthetic owner id, so know-hub's
+  # ownership predicate isolates lab datasets from each other and from the
+  # harness corpus.
+  #
+  # Its venv volume is separate from eval-runner's: it needs only the base
+  # install (no ragas tree), and two containers bootstrapping one volume at the
+  # same time would race.
+  # ---------------------------------------------------------------------------
+  eval-api:
+    profiles: [evals]
+    image: python:3.12-slim
+    container_name: brainwave-eval-api
+    working_dir: /workspace/agent-hub
+    restart: "no"
+    environment:
+      KNOW_HUB_URL: "http://know-hub:3002"
+      KNOW_HUB_GRPC_HOST: "know-hub"
+      KNOW_HUB_GRPC_PORT: "50052"
+      EVAL_LAB_PORT: "3005"
+      # Synthetic question generation (Dataset Construction → Generate) uses the
+      # stack's local Ollama, so no document text leaves the network.
+      OLLAMA_BASE_URL: "http://ollama:11434"
+      EVAL_LAB_GEN_MODEL: "llama3.1:8b-instruct-q4_K_M"
+      EVAL_LAB_RELOAD: "true"
+      # Docker Desktop bind mounts do not deliver inotify events reliably.
+      WATCHFILES_FORCE_POLLING: "true"
+      EVAL_LAB_CORS: "http://localhost:5173"
+      VIRTUAL_ENV: /opt/venv
+      PATH: /opt/venv/bin:/usr/local/bin:/usr/bin:/bin
+      PYTHONUNBUFFERED: "1"
+      PYTHONIOENCODING: "utf-8"
+    ports:
+      - "127.0.0.1:3005:3005"
+    volumes:
+      - ../../:/workspace
+      - eval-api-venv:/opt/venv
+    entrypoint:
+      - /bin/sh
+      - -lc
+      - |
+        set -e
+        if [ ! -x /opt/venv/bin/python ]; then
+          pip install --no-cache-dir --quiet uv
+          uv venv /opt/venv
+        fi
+        . /opt/venv/bin/activate
+        if [ ! -f /opt/venv/.eval-api-installed ]; then
+          pip install --no-cache-dir --quiet uv 2>/dev/null || true
+          uv pip install --quiet -e .
+          touch /opt/venv/.eval-api-installed
+        fi
+        # Stubs are gitignored; regenerating is cheap and keeps chunk-level
+        # search working after a proto change.
+        python scripts/gen_proto.py
+        exec "$@"
+      - --
+    command: ["python", "-m", "agent_hub.eval.lab"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:3005/health/live', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+    networks:
+      - brainwave
+
 volumes:
   eval-venv:
     name: brainwave-eval-venv
   ragas-venv:
     name: brainwave-ragas-venv
+  eval-api-venv:
+    name: brainwave-eval-api-venv

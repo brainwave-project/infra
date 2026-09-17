@@ -37,7 +37,7 @@ EVAL_INIT   := minio-init kafka-init ollama-init
         down reset ps logs urls lint no-restart \
         evals evals-up evals-seed evals-run evals-ragas evals-ragas-real \
         evals-gate evals-promote \
-        evals-shell evals-ps evals-logs evals-down evals-reset
+        evals-shell evals-ps evals-logs evals-down evals-reset evals-lab
 
 # ---------------------------------------------------------------------------
 # Dev
@@ -157,7 +157,8 @@ urls:
 #   make evals-gate     Compare newest report to the baseline; non-zero on regression
 #   make evals-promote  Adopt the newest report as the baseline
 #   make evals-shell    Interactive shell in the runner
-#   make evals-down     Stop the eval stack
+#   make evals-lab      Stack + eval-api (:3005) for the UI's Evaluation section
+#   make evals-down     Stop the eval stack (incl. eval-api)
 # ---------------------------------------------------------------------------
 
 evals: evals-up
@@ -221,6 +222,30 @@ evals-promote:
 
 evals-shell:
 	docker compose $(EVAL_F) run --rm eval-runner bash
+
+# Interactive Eval Lab: the lean stack plus the eval-api service that backs the
+# UI's Evaluation section (Dataset Construction · Data Lab · Retrieval ·
+# Experiments). The UI itself still runs on the host.
+evals-lab: evals-up
+	@echo "==> eval-api (Eval Lab backend, :3005 — first run installs its venv)"
+	docker compose $(EVAL_F) up -d --no-deps eval-api
+	@echo "    waiting for eval-api..."
+	@ready=0; for i in $$(seq 1 90); do \
+		if curl -sf http://localhost:3005/health/live >/dev/null 2>&1; then ready=1; break; fi; \
+		sleep 2; \
+	done; \
+	if [ $$ready -eq 1 ]; then echo "    eval-api ready"; \
+	else echo "    eval-api not ready yet — check: make evals-logs s=eval-api"; fi
+	@echo ""
+	@echo "  ┌─ Eval Lab ─────────────────────────────────────────────────────────┐"
+	@echo "  │  UI (run on host)     cd ../ui && npm run dev                       │"
+	@echo "  │  Evaluation section   http://localhost:5173/evaluation              │"
+	@echo "  │  eval-api docs        http://localhost:3005/api/eval/docs           │"
+	@echo "  │  know-hub             http://localhost:3002/api/docs                │"
+	@echo "  │  Stop                 make evals-down                               │"
+	@echo "  └────────────────────────────────────────────────────────────────────┘"
+	@echo "  No Kong/Keycloak on this stack: the Evaluation section needs no login in"
+	@echo "  dev builds; other pages will redirect to /login."
 
 evals-ps:
 	docker compose $(EVAL_F) ps
