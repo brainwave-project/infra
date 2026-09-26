@@ -158,6 +158,7 @@ urls:
 #   make evals-promote  Adopt the newest report as the baseline
 #   make evals-shell    Interactive shell in the runner
 #   make evals-lab      Stack + eval-api (:3005) for the UI's Evaluation section
+#   make evals-release-gate  Eval Lab release gate on the exported snapshot (what CI runs)
 #   make evals-down     Stop the eval stack (incl. eval-api)
 # ---------------------------------------------------------------------------
 
@@ -223,9 +224,19 @@ evals-promote:
 evals-shell:
 	docker compose $(EVAL_F) run --rm eval-runner bash
 
+# Eval Lab release gate (Release Gate page → Export for CI writes the snapshot).
+# The same command CI runs; exit 1 = BLOCK, 2 = the gate could not run.
+RELEASE := src/agent_hub/eval/release
+evals-release-gate:
+	docker compose $(EVAL_F) exec eval-api \
+		python -m agent_hub.eval.lab.gate_cli \
+			--policy $(RELEASE)/policy.json \
+			--baseline $(RELEASE)/baseline.json \
+			--candidate $(RELEASE)/candidate.json
+
 # Interactive Eval Lab: the lean stack plus the eval-api service that backs the
-# UI's Evaluation section (Dataset Construction · Data Lab · Retrieval ·
-# Experiments). The UI itself still runs on the host.
+# UI's Evaluation section (Golden Sets · Retrieval · Experiments · Stats Lab ·
+# Generation · Judge Lab · Release Gate). The UI itself still runs on the host.
 evals-lab: evals-up
 	@echo "==> eval-api (Eval Lab backend, :3005 — first run installs its venv)"
 	docker compose $(EVAL_F) up -d --no-deps eval-api

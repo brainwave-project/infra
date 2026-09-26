@@ -256,6 +256,10 @@ services:
       # stack's local Ollama, so no document text leaves the network.
       OLLAMA_BASE_URL: "http://ollama:11434"
       EVAL_LAB_GEN_MODEL: "llama3.1:8b-instruct-q4_K_M"
+      # Generation metrics, the lab pipeline's grader/generator and Judge Lab
+      # judges default to this model (a judge can pin another one). Pull a second
+      # model into the ollama volume to study judge drift across models.
+      EVAL_LAB_JUDGE_MODEL: "llama3.1:8b-instruct-q4_K_M"
       EVAL_LAB_RELOAD: "true"
       # Docker Desktop bind mounts do not deliver inotify events reliably.
       WATCHFILES_FORCE_POLLING: "true"
