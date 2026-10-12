@@ -37,7 +37,12 @@ EVAL_INIT   := minio-init kafka-init ollama-init
         down reset ps logs urls lint no-restart \
         evals evals-up evals-seed evals-run evals-ragas evals-ragas-real \
         evals-gate evals-promote \
-        evals-shell evals-ps evals-logs evals-down evals-reset evals-lab
+        evals-shell evals-ps evals-logs evals-down evals-reset evals-lab evals-ui \
+        evals-arabic-list evals-arabic-diagnostic \
+        evals-arabic-pilot-prepare evals-arabic-pilot-run \
+        evals-arabic-dense-diagnostic evals-arabic-dense-pilot \
+        evals-arabic-full-prepare evals-arabic-full-bm25 evals-arabic-full-dense \
+        evals-arabic-main-analyze evals-arabic-main-export
 
 # ---------------------------------------------------------------------------
 # Dev
@@ -158,6 +163,13 @@ urls:
 #   make evals-promote  Adopt the newest report as the baseline
 #   make evals-shell    Interactive shell in the runner
 #   make evals-lab      Stack + eval-api (:3005) for the UI's Evaluation section
+#   make evals-ui       Start the Vite UI (:5173); keep this terminal open
+#   make evals-arabic-diagnostic     Import and run the authored BM25 diagnostic
+#   make evals-arabic-pilot-prepare  Download and prepare the bounded MIRACL train pilot
+#   make evals-arabic-pilot-run      Import and run the six controlled BM25 pilot conditions
+#   make evals-arabic-dense-diagnostic / evals-arabic-dense-pilot
+#   make evals-arabic-full-prepare / evals-arabic-full-bm25 / evals-arabic-full-dense
+#   make evals-arabic-main-analyze / evals-arabic-main-export
 #   make evals-release-gate  Eval Lab release gate on the exported snapshot (what CI runs)
 #   make evals-down     Stop the eval stack (incl. eval-api)
 # ---------------------------------------------------------------------------
@@ -257,6 +269,56 @@ evals-lab: evals-up
 	@echo "  └────────────────────────────────────────────────────────────────────┘"
 	@echo "  No Kong/Keycloak on this stack: the Evaluation section needs no login in"
 	@echo "  dev builds; other pages will redirect to /login."
+
+# Keep this command in its own terminal while using the browser.
+evals-ui:
+	npm --prefix ../ui run dev
+
+# Arabic normalization shortcuts used by docs/experiment-3. They run inside
+# eval-api so every command shares its mounted dataset store and saved IDs.
+evals-arabic-list:
+	docker compose $(EVAL_F) exec -T eval-api \
+		/bin/sh /workspace/infra/scripts/evals-arabic-pilot.sh list
+
+evals-arabic-diagnostic:
+	docker compose $(EVAL_F) exec -T eval-api \
+		/bin/sh /workspace/infra/scripts/evals-arabic-pilot.sh diagnostic
+
+evals-arabic-pilot-prepare:
+	docker compose $(EVAL_F) exec -T eval-api \
+		/bin/sh /workspace/infra/scripts/evals-arabic-pilot.sh prepare
+
+evals-arabic-pilot-run:
+	docker compose $(EVAL_F) exec -T eval-api \
+		/bin/sh /workspace/infra/scripts/evals-arabic-pilot.sh run
+
+evals-arabic-dense-diagnostic:
+	docker compose $(EVAL_F) exec -T eval-api \
+		/bin/sh /workspace/infra/scripts/evals-arabic-pilot.sh dense-diagnostic
+
+evals-arabic-dense-pilot:
+	docker compose $(EVAL_F) exec -T eval-api \
+		/bin/sh /workspace/infra/scripts/evals-arabic-pilot.sh dense-pilot
+
+evals-arabic-full-prepare:
+	docker compose $(EVAL_F) exec -T eval-api \
+		/bin/sh /workspace/infra/scripts/evals-arabic-pilot.sh full-prepare $(query_limit)
+
+evals-arabic-full-bm25:
+	docker compose $(EVAL_F) exec -T eval-api \
+		/bin/sh /workspace/infra/scripts/evals-arabic-pilot.sh full-bm25
+
+evals-arabic-full-dense:
+	docker compose $(EVAL_F) exec -T eval-api \
+		/bin/sh /workspace/infra/scripts/evals-arabic-pilot.sh full-dense
+
+evals-arabic-main-analyze:
+	docker compose $(EVAL_F) exec -T eval-api \
+		/bin/sh /workspace/infra/scripts/evals-arabic-pilot.sh main-analyze
+
+evals-arabic-main-export:
+	docker compose $(EVAL_F) exec -T eval-api \
+		/bin/sh /workspace/infra/scripts/evals-arabic-pilot.sh main-export
 
 evals-ps:
 	docker compose $(EVAL_F) ps
